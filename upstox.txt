@@ -1,0 +1,1 @@
+https://api.upstox.com/index/dialog/authorize?apiKey=wtKxwbnbA33kdAEyZ4Aqc9yylBKPWElraenQ37fo&redirect_uri=https://upstox.com/developer&response_type=code
