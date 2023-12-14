@@ -1,11 +1,11 @@
-import upstox_client
+import json, upstox_client
 from upstox_client.rest import ApiException
 from pprint import pprint
 
 # Configure OAuth2 access token for authorization: OAUTH2
 configuration = upstox_client.Configuration()
-with open('access_token') as file:
-    configuration.access_token = file.read()
+with open('credentials.json') as file:
+    configuration.access_token = json.load(file)['access_token']
 
 # create an instance of the API class
 api_instance = upstox_client.OrderApi(upstox_client.ApiClient(configuration))
