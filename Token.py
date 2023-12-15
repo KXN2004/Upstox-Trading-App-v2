@@ -1,32 +1,46 @@
-import time, json, pyperclip, pyautogui, platform, webbrowser, upstox_client
+import json
+import pyautogui
+import webbrowser
+import upstox_client
+from time import sleep
+from pyperclip import paste
+from platform import system
 from upstox_client.rest import ApiException
 
-match platform.system():
+match system():
     case 'Windows':
-        modifier = 'ctrl'
+        modifier_key = 'ctrl'
+        submit_button = 'enter'
     case 'Darwin':
-        modifier = 'command'
+        modifier_key = 'command'
+        submit_button = 'return'
+    case 'Linux':
+        modifier_key = 'ctrl'
+        submit_button = 'enter'
 
 with open('credentials.json', 'r') as file:
     credentials = json.load(file)
 
-# Launch the default web browser and ask the user to login
+print("Opening the browser...")
 webbrowser.get('chrome').open(f'https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id={credentials["client_id"]}&redirect_uri={credentials["redirect_url"]}')
 
-url = 'Waiting for authorization...'
+print("Entering the 6 digit pin...")
+sleep(2)
+pyautogui.typewrite(credentials['PIN'])
+pyautogui.press(submit_button)
+
+url = 'Generating the access token...'
 print(url)
 while not url.startswith(credentials['redirect_url'] + '?code='):
-    time.sleep(5)
-    pyautogui.hotkey(modifier, 'l')
-    pyautogui.hotkey(modifier, 'c')
-    url = pyperclip.paste()
+    sleep(2)
+    pyautogui.hotkey(modifier_key, 'l')
+    pyautogui.hotkey(modifier_key, 'c')
+    url = paste()
     code = url.split('=')[-1]
 
-# create an instance of the API class
 api_instance = upstox_client.LoginApi()
 
 try:
-    # Get token API
     api_response = api_instance.token(
         api_version='2.0',
         code=code,
@@ -38,6 +52,6 @@ try:
     credentials['access_token'] = api_response.access_token
     with open('credentials.json', 'w') as file:
         json.dump(credentials, file)
-    print("Generated the access token succesfully!")
+    print("Done!")
 except ApiException as e:
     print("Exception when calling LoginApi->token: %s\n" % e)
