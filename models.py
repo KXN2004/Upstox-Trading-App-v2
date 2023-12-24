@@ -1,22 +1,88 @@
+import upstox_client
+from upstox_client import ApiClient
 from sqlalchemy import Date, create_engine, Column, ForeignKey, String, Integer, Float, Date, Time
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
+# Trade table: status column: OPENED|ORDERED|PENDING|EXECUTED|CLOSED|REJECTED
+
+class Database:
+    def __init__(self, db_path: str):
+        engine = create_engine(f'sqlite:///{db_path}')
+        # schema = declarative_base().metadata
+        # schema.reflect(engine)
+        Session = sessionmaker(bind=engine)
+        session = Session()
+        self.connection = session
+        self.table = session.query
+
+class Client:
+    """Class to represent a client"""
+
+    def __init__(self, client_id: str, access_token: str, session: sessionmaker):
+        configuration = upstox_client.Configuration()
+        configuration.access_token = access_token
+        api_client = ApiClient(configuration)
+        self.session = session
+        self.client_id = client_id
+        self.strategy = session.query(Strategies).filter_by(client_id=client_id).first()
+        self.market_quote_api = upstox_client.MarketQuoteApi(api_client)
+        self.order_api = upstox_client.OrderApi(api_client)
+
+    def get_trades(self):
+        '''Return the Trades table for that client'''
+        return self.session.query(Trades).filter_by(client_id=self.client_id)
+
+    def get_ltp(self, tradingsymbol: str) -> float:
+        """Returns the last traded price of the given tradingsymbol"""
+        return (self.market_quote_api
+            .ltp(tradingsymbol, '2.0')
+            .to_dict()
+            ['data']
+            ['NSE_FO' + ':' + tradingsymbol]
+            ['last_price']
+        )
+    
+    def get_banknifty_ltp(self) -> float:
+        """Returns the last traded price of the BankNifty index"""
+        return (self.market_quote_api
+            .ltp('NSE_INDEX|Nifty Bank', '2.0')
+            .to_dict()
+            ['data']
+            ['NSE_INDEX:Nifty Bank']
+            ['last_price']
+        )
+
 # Define the model
 Base = declarative_base()
+
+# Define the database
+DATABASE = 'database.db'
+
+class Instruments(Base):
+    """Table contains all the coresponding instrument keys of tradingsymbols"""
+    __tablename__ = 'Instruments'
+
+    trading_symbol = Column('TradingSymbol', String, primary_key=True)
+    instrument_key = Column('InstrumentKey', String, nullable=False)
+
+    def __repr__(self):
+        return f'<InstrumentKey(Tradingsymbol="{self.tradingsymbol}")>'
+
 
 class Credentials(Base):
     """Table contains all the authorization credentials of clients"""
     __tablename__ = 'Credentials'
 
     client_id = Column('ClientId', String, primary_key=True)
+    is_active = Column('Active', Integer, default=0)
     api_key = Column('ApiKey', String, nullable=False)
     api_secret = Column('ApiSecret', String, nullable=False)
     access_token = Column('AccessToken', String, nullable=False)
 
     def __repr__(self):
         return f'<Credential(ClientId="{self.client_id}")>'
-    
+
 
 class Strategies(Base):
     """Table contains all the strategies offered to the clients"""
@@ -64,19 +130,30 @@ class Clients(Base):
     def __repr__(self):
         return f'<Client(ClientId="{self.client_id}")>'
 
-class Active(Base):
-    """Table contains all the active clients for the day"""
-    __tablename__ = 'Active'
-
-    client_id = Column('ClientId', String, ForeignKey(Credentials.client_id), primary_key=True)
-    
-    def __repr__(self):
-        return f'<Active(ClientId="{self.client_id}")>'
 
 
 class Trades(Base):
     """Table contains all the trades executed on the clients"""
     __tablename__ = 'Trades'
+
+    BUY = 'BUY'
+    SELL = 'SELL'
+    OPEN = 'Open'
+    ORDERED = 'Ordered'
+    PENDING = 'Pending'
+    EXECUTED = 'Executed'
+    CLOSED = 'Closed'
+    REJECTED = 'Rejected'
+    FIXEDPROFIT = 'FixedProfit'
+    INTRADAY = 'I'
+    DELIVERY = 'D'
+    DAY = 'DAY'
+    IOC = 'IOC'
+    MARKET = 'MARKET'
+    LIMIT = 'LIMIT'
+    STOPLOSS = 'SL'
+    STOPLOSSMARKET = 'SL-M'
+
 
     order_id = Column('OrderId', String, primary_key=True)
     client_id = Column('ClientId', String, ForeignKey(Credentials.client_id), nullable=False)
@@ -101,7 +178,7 @@ class Trades(Base):
 
 def main():
     # Create an SQLite in-memory database engine
-    engine = create_engine('sqlite:///database.db', echo=True)
+    engine = create_engine('sqlite:///{DATABASE}', echo=True)
 
     # Link the database schema to metadata of the Base class
     # schema = Base.metadata
@@ -112,6 +189,9 @@ def main():
     # Create a session
     Session = sessionmaker(bind=engine)
     session = Session()
+
+    # Close the session
+    session.close()
 
 if __name__ == '__main__':
     main()
