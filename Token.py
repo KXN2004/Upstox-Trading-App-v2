@@ -49,7 +49,6 @@ for client in active_clients:
         # Update the access token of that client
         client.access_token = api_response.access_token
         session.commit()
-        print(f"Access token of {client.client_id} is {client.access_token}")
     except ApiException as e:
         print("Exception when calling LoginApi->token: %s\n" % e)
 
