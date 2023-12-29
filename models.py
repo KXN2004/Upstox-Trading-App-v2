@@ -1,9 +1,11 @@
-import upstox_client
-from upstox_client import ApiClient
-from sqlalchemy import create_engine, Column, ForeignKey, String, Integer, Float, Date, Time
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
 from enum import Enum
+from Script import get_ltp
+from upstox_client import ApiClient
+from upstox_client.rest import ApiException
+from sqlalchemy import create_engine, Column, ForeignKey, String, Integer, Float, Date, Time
+from sqlalchemy.orm import sessionmaker, declarative_base
+import upstox_client
+
 
 class TradeStatus(Enum):
     """
@@ -41,6 +43,20 @@ class TransactionType(Enum):
     """
     BUY = 'BUY'
     SELL = 'SELL'
+
+    def opposite_of(self):
+        """
+        Returns the opposite of the transaction type
+
+        Returns:
+            TransactionType: Opposite of the transaction type
+        """
+        if self == TransactionType.BUY:
+            return TransactionType.SELL
+        elif self == TransactionType.SELL:
+            return TransactionType.BUY
+        else:
+            raise ValueError('Invalid transaction type')
 
 
 class OrderType(Enum):
@@ -114,14 +130,13 @@ class Strategy(Enum):
 API_VERSION = '2.0'
 
 class Database:
+    """Represents the sqlite database connection"""
     def __init__(self, db_path: str):
         engine = create_engine(f'sqlite:///{db_path}')
         # schema = declarative_base().metadata
         # schema.reflect(engine)
         Session = sessionmaker(bind=engine)
-        session = Session()
-        self.connection = session
-        self.table = session.query
+        self.session = Session()
 
 
 class Client:
@@ -198,6 +213,10 @@ class Client:
     def get_trades(self) :
         '''Return the Trades table for that client'''
         return self.session.query(Trades).filter_by(client_id=self.client_id)
+    
+    def get_flags(self) :
+        """Return the Flags table for that client"""
+        return self.session.query(Flags).filter_by(client_id=self.client_id)
 
     def get_ltp(self, tradingsymbol: str) -> float:
         """Returns the last traded price of the given tradingsymbol"""
@@ -219,6 +238,9 @@ class Client:
             ['last_price']
         )
 
+    def close_trade(self):
+        """Close the trade"""
+        
 
 # Define the model
 Base = declarative_base()
@@ -286,7 +308,8 @@ class Flags(Base):
 
     def __repr__(self):
         return f'<Flag(ClientId="{self.client_id}")>'
-    
+
+
 class Clients(Base):
     """Table contains all the attributes associated with the clients"""
     __tablename__ = 'Clients'
@@ -302,7 +325,6 @@ class Clients(Base):
         return f'<Client(ClientId="{self.client_id}")>'
 
 
-
 class Trades(Base):
     """Table contains all the trades executed on the clients"""
     __tablename__ = 'Trades'
@@ -310,7 +332,7 @@ class Trades(Base):
     order_id = Column('OrderId', String, primary_key=True)
     client_id = Column('ClientId', String, ForeignKey(Credentials.client_id), nullable=False)
     date_time = Column('DateTime', Time, nullable=False)
-    strategy = Column('Strategy', String,  nullable=False)    
+    strategy = Column('Strategy', String,  nullable=False)
     symbol = Column('Symbol', String, nullable=False)
     rank = Column('Rank', Integer, nullable=False)
     days_left = Column('DaysLeft', Date, nullable=False)
@@ -326,6 +348,36 @@ class Trades(Base):
 
     def __repr__(self):
         return f'<Trade(OrderId="{self.order_id}")>'
+
+    def close_trade(self, client: Client) -> None:
+        """Close the trade"""
+        match self.trade_type:
+            case TransactionType.SELL.value:
+                trade_type = TransactionType.BUY
+            case TransactionType.BUY.value:
+                trade_type = TransactionType.SELL
+        try:
+            order_id = client.place_order(
+                quantity=self.quantity,
+                price=0,
+                tradingsymbol=self.symbol,
+                order_type=OrderType.MARKET,
+                transaction_type=trade_type
+            ).to_dict()['data']['order_id']
+            print(f'Order id: {order_id}')
+            api_response = client.order_api.get_order_details(order_id, API_VERSION)
+            self.exit_price = api_response.to_dict()['data']['price']
+            match self.trade_type:
+                case TransactionType.SELL.value:
+                    self.profit_loss = self.exit_price - self.entry_price
+                case TransactionType.BUY.value:
+                    self.profit_loss = self.entry_price - self.exit_price
+            self.LTP = client.get_ltp(self.symbol)
+            self.entry_status = TradeStatus.EXECUTED.value
+            self.exit_status = TradeStatus.ORDERED.value
+            self.status = TradeStatus.CLOSED.value
+        except ApiException as e:
+            print("Exception when calling OrderApi->place_order: %s\n" % e)
 
 
 def main():

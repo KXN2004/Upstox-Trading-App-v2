@@ -27,6 +27,7 @@ for _ in session.query(Credentials).filter_by(is_active=YES):
 
 
 def get_token(tradingsymbol: str) -> str:
+    """Return the token of the given tradingsymbol"""
     return (session
         .query(Instruments)
         .filter_by(trading_symbol=tradingsymbol)
@@ -36,15 +37,21 @@ def get_token(tradingsymbol: str) -> str:
 
 
 def get_ltp(tradingsymbol: str) -> float:
+    """Return the last traded price of the given tradingsymbol"""
     return active_clients[0].market_quote_api.ltp(
         get_token(tradingsymbol), API_VERSION
     ).to_dict()['data']['NSE_FO:' + tradingsymbol]['last_price']
 
 
 def get_banknifty_ltp() -> float:
+    """Return the last traded price of the Bank Nifty Index"""
     return active_clients[0].market_quote_api.ltp(
         'NSE_INDEX|Nifty Bank', API_VERSION
     ).to_dict()['data']['NSE_INDEX:Nifty Bank']['last_price']
+
+def get_trades() -> list:
+    """Return all the trades in the database"""
+    return session.query(Trades).all()
 
 
 last_price = get_banknifty_ltp()
@@ -332,6 +339,7 @@ def price_strike(expiry: str, price, option):
 
 
 def fixed_profit_entry() -> None:
+    """Fixed profit entry strategy"""
     # Properties common to all trades in fixed profit entry strategy
     new_trade = Trades()  # Create a new trade object
     new_trade.strategy = Strategy.FIXED_PROFIT.value
@@ -339,14 +347,13 @@ def fixed_profit_entry() -> None:
     new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
     new_trade.days_left = fromtime1
     new_trade.date_time = datetime.now().time()
-    new_trade.exit_price = 120
+    new_trade.exit_price = -1
     new_trade.exit_status = NOT_APPLICABLE
     new_trade.profit_loss = 0
 
     # Common for all clients
-    _, put_symbol = price_strike(week1b, 60, 'Put')
-    _, call_symbol = price_strike(week1b, 60, 'Call')
-    new_trade.symbol = call_symbol
+    _, put_symbol = price_strike(week1b, 60, PUT)
+    _, call_symbol = price_strike(week1b, 60, CALL)
 
     for client in active_clients:
         new_trade.client_id = client.client_id
@@ -415,8 +422,30 @@ def fixed_profit_entry() -> None:
             session.commit()
 
 
+def update() -> None:
+    """Update the Trades table"""
+    for client in active_clients:
+        for trade in client.get_trades():
+            current_ltp = get_ltp(trade.symbol)
+            if 30 < current_ltp < 120 and not client.get_flags().first_leg:
+                trade.LTP = current_ltp
+            elif current_ltp < 30:
+                match trade.rank:
+                    case 'Call 0' | 'Put 0':  # For if Call 0 or Put 0
+                        trade.close_trade(client)
+                        session.commit()
+                    case 'Call 1' | 'Put 1':  # For if Call 1 or Put 1
+                        pass
+                    case _:
+                        raise ValueError('Invalid rank')
+
+
 weeks()
 
-fixed_profit_entry()
+# fixed_profit_entry()
+
+update()
 
 session.close()
+
+print('Done!')
