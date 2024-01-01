@@ -1,5 +1,4 @@
 from enum import Enum
-from Script import get_ltp
 from upstox_client import ApiClient
 from upstox_client.rest import ApiException
 from sqlalchemy import create_engine, Column, ForeignKey, String, Integer, Float, Date, Time
@@ -162,7 +161,6 @@ class Client:
         )
 
 
-    # TODO: Redfine tradingsymbol to token over
     def place_order(self,
             quantity: int,
             tradingsymbol: str,
@@ -209,11 +207,44 @@ class Client:
         )
         return self.order_api.place_order(body, API_VERSION).to_dict()
 
+    def close_trade(self, trade) -> None:
+        """Close the trade which was passed as an argument"""
+        match trade.trade_type:
+            case TransactionType.SELL.value:
+                trade_type = TransactionType.BUY
+            case TransactionType.BUY.value:
+                trade_type = TransactionType.SELL
+        try:
+            order_id = self.place_order(
+                quantity=trade.quantity,
+                price=0,
+                tradingsymbol=trade.symbol,
+                order_type=OrderType.MARKET,
+                transaction_type=trade_type
+            )['data']['order_id']
+            order_details = self.order_api.get_order_details(
+                api_version=API_VERSION, order_id=order_id
+            )
+            trade.exit_price = order_details.data[-1].average_price
+            trade.exit_status = order_details.data[-1].status
+            match trade.trade_type:
+                case TransactionType.SELL.value:
+                    trade.profit_loss = trade.exit_price - trade.entry_price
+                case TransactionType.BUY.value:
+                    trade.profit_loss = trade.entry_price - trade.exit_price
+            trade.LTP = self.get_ltp(trade.symbol)
+            trade.entry_status = TradeStatus.EXECUTED.value
+            trade.status = TradeStatus.CLOSED.value
+
+            # Update the changes in the database
+            self.session.commit()
+        except ApiException as e:
+            print("Exception when calling OrderApi->place_order: %s\n" % e)
 
     def get_trades(self) :
         '''Return the Trades table for that client'''
         return self.session.query(Trades).filter_by(client_id=self.client_id)
-    
+
     def get_flags(self) :
         """Return the Flags table for that client"""
         return self.session.query(Flags).filter_by(client_id=self.client_id)
@@ -221,13 +252,13 @@ class Client:
     def get_ltp(self, tradingsymbol: str) -> float:
         """Returns the last traded price of the given tradingsymbol"""
         return (self.market_quote_api
-            .ltp(tradingsymbol, '2.0')
+            .ltp(self.get_token(tradingsymbol), '2.0')
             .to_dict()
             ['data']
             ['NSE_FO' + ':' + tradingsymbol]
             ['last_price']
         )
-    
+
     def get_banknifty_ltp(self) -> float:
         """Returns the last traded price of the BankNifty index"""
         return (self.market_quote_api
@@ -238,9 +269,6 @@ class Client:
             ['last_price']
         )
 
-    def close_trade(self):
-        """Close the trade"""
-        
 
 # Define the model
 Base = declarative_base()
@@ -348,36 +376,6 @@ class Trades(Base):
 
     def __repr__(self):
         return f'<Trade(OrderId="{self.order_id}")>'
-
-    def close_trade(self, client: Client) -> None:
-        """Close the trade"""
-        match self.trade_type:
-            case TransactionType.SELL.value:
-                trade_type = TransactionType.BUY
-            case TransactionType.BUY.value:
-                trade_type = TransactionType.SELL
-        try:
-            order_id = client.place_order(
-                quantity=self.quantity,
-                price=0,
-                tradingsymbol=self.symbol,
-                order_type=OrderType.MARKET,
-                transaction_type=trade_type
-            ).to_dict()['data']['order_id']
-            print(f'Order id: {order_id}')
-            api_response = client.order_api.get_order_details(order_id, API_VERSION)
-            self.exit_price = api_response.to_dict()['data']['price']
-            match self.trade_type:
-                case TransactionType.SELL.value:
-                    self.profit_loss = self.exit_price - self.entry_price
-                case TransactionType.BUY.value:
-                    self.profit_loss = self.entry_price - self.exit_price
-            self.LTP = client.get_ltp(self.symbol)
-            self.entry_status = TradeStatus.EXECUTED.value
-            self.exit_status = TradeStatus.ORDERED.value
-            self.status = TradeStatus.CLOSED.value
-        except ApiException as e:
-            print("Exception when calling OrderApi->place_order: %s\n" % e)
 
 
 def main():

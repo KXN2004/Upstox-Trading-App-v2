@@ -16,8 +16,8 @@ API_VERSION = '2.0'
 NO = 0
 YES = 1
 NOT_APPLICABLE = 'NA'
-PUT = 'Put',
-CALL = 'Call',
+PUT = 'Put'
+CALL = 'Call'
 BANK_INDEX = 'NSE_INDEX|Nifty Bank'
 
 active_clients = list()
@@ -40,7 +40,7 @@ def get_ltp(tradingsymbol: str) -> float:
     """Return the last traded price of the given tradingsymbol"""
     return active_clients[0].market_quote_api.ltp(
         get_token(tradingsymbol), API_VERSION
-    ).to_dict()['data']['NSE_FO:' + tradingsymbol]['last_price']
+    ).to_dict()['data']['NSE_FO' + ':' + tradingsymbol]['last_price']
 
 
 def get_banknifty_ltp() -> float:
@@ -289,7 +289,7 @@ def price_strike(expiry: str, price, option):
     print('Inside price_strike')
 
     buff2 = 0
-    
+
     if option.lower() == 'call':
         print('for new call')
         for strike in strike_ce:
@@ -422,22 +422,118 @@ def fixed_profit_entry() -> None:
             session.commit()
 
 
+def next_expiry() -> None:
+    pass
+
 def update() -> None:
     """Update the Trades table"""
     for client in active_clients:
-        for trade in client.get_trades():
-            current_ltp = get_ltp(trade.symbol)
+        for current_trade in client.get_trades():
+            current_ltp = get_ltp(current_trade.symbol)
             if 30 < current_ltp < 120 and not client.get_flags().first_leg:
-                trade.LTP = current_ltp
-            elif current_ltp < 30:
-                match trade.rank:
-                    case 'Call 0' | 'Put 0':  # For if Call 0 or Put 0
-                        trade.close_trade(client)
+                current_trade.LTP = current_ltp
+            elif current_ltp < 30 and current_trade.status == TradeStatus.LIVE.value:
+                # If rank of current trade is Call 1 or Put 1
+                if current_trade.rank in ('Call 1', 'Put 1'):
+                    # Filter out all the live trades with ranks ending with an `i`
+                    insurance_trade = client.get_trades().filter(
+                        Trades.rank == current_trade.rank + 'i',
+                        Trades.status == TradeStatus.LIVE.value
+                    ).first()
+
+                    if insurance_trade.ltp < 7:
+                        rank = insurance_trade.rank.split()[0]
+                        strike, symbol = price_strike(week1b, 8, rank)
+
+                        if strike != int(insurance_trade.symbol[-7:-2]):
+                            client.close_trade(insurance_trade)
+
+                            new_trade = Trades()
+                            new_trade.client_id = insurance_trade.client_id
+                            new_trade.strategy = insurance_trade.strategy
+                            new_trade.quantity = insurance_trade.quantity
+                            new_trade.rank = insurance_trade.rank
+                            new_trade.days_left = insurance_trade.days_left
+                            new_trade.trade_type = insurance_trade.trade_type
+                            new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
+                            new_trade.date_time = datetime.now().time()
+                            new_trade.exit_price = -1
+                            new_trade.exit_status = NOT_APPLICABLE
+                            new_trade.profit_loss = 0
+                            new_trade.symbol = symbol
+                            new_trade.ltp = get_ltp(symbol)
+                            new_trade.order_id = randint(10, 99)
+                            parameters = client.market_quote_api.get_full_market_quote(get_token(symbol), API_VERSION).to_dict()
+                            new_trade.entry_price = parameters['data'][f'NSE_FO:{symbol}']['depth']['sell'][0]['price'] - 0.05
+                            try:
+                                order = client.place_order(
+                                    quantity=new_trade.quantity,
+                                    price=0,
+                                    tradingsymbol=new_trade.symbol,
+                                    order_type=OrderType.MARKET,
+                                    transaction_type=new_trade.trade_type
+                                )
+                                order_id = order['data']['order_id']  # Extract the order_id
+                                new_trade.order_id = order_id
+                            except ApiException as e:
+                                print("Exception when calling OrderApi->place_order: %s\n" % e)
+
+                            # Use deepcopy to add the current state of new trade to Trades Table
+                            session.add(deepcopy(new_trade))
+
+                            # save the changes to the database
+                            session.commit()
+
+                if current_trade.rank in ('Call 0', 'Put 0', 'Call 1', 'Put 1'):  # For if Call 0 or Put 0
+
+                    rank = current_trade.rank.split()[0]
+                    strike, symbol = price_strike(week1b, 50, rank)
+
+                    if strike == int(current_trade.symbol[-7:-2]) or not (40 < get_ltp(symbol) < 60):
+                        next_expiry()
+                    else:
+
+                        client.close_trade(current_trade)
+
+                        # Duplicate the current trade
+                        new_trade = Trades()
+                        new_trade.client_id = current_trade.client_id
+                        new_trade.strategy = current_trade.strategy
+                        new_trade.quantity = current_trade.quantity
+                        new_trade.rank = current_trade.rank
+                        new_trade.days_left = current_trade.days_left
+                        new_trade.trade_type = current_trade.trade_type
+                        new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
+                        new_trade.date_time = datetime.now().time()
+                        new_trade.exit_price = -1
+                        new_trade.exit_status = NOT_APPLICABLE
+                        new_trade.profit_loss = 0
+
+
+                        new_trade.order_id = randint(10, 99)
+                        parameters = client.market_quote_api.get_full_market_quote(get_token(symbol), API_VERSION).to_dict()
+                        new_trade.entry_price = parameters['data'][f'NSE_FO:{symbol}']['depth']['sell'][0]['price'] - 0.05
+                        try:
+                            order = client.place_order(
+                                quantity=new_trade.quantity,
+                                price=new_trade.entry_price,
+                                tradingsymbol=symbol,
+                                order_type=OrderType.LIMIT,
+                                transaction_type=TransactionType.SELL
+                            )
+                            order_id = order['data']['order_id']  # Extract the order_id
+                            new_trade.order_id = order_id
+                        except ApiException as e:
+                            print("Exception when calling OrderApi->place_order: %s\n" % e)
+
+                        new_trade.symbol = symbol
+                        new_trade.ltp = get_ltp(symbol)
+
+                        # Use deepcopy to add the current state of new trade to Trades Table
+                        session.add(deepcopy(new_trade))
+
+                        # save the changes to the database
                         session.commit()
-                    case 'Call 1' | 'Put 1':  # For if Call 1 or Put 1
-                        pass
-                    case _:
-                        raise ValueError('Invalid rank')
 
 
 weeks()
