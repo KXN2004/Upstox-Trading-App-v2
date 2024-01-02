@@ -1,16 +1,15 @@
 from time import sleep
-
+from pandas_ta import supertrend
 import schedule
 from random import randint
 from copy import deepcopy
-from upstox_client.rest import ApiException
 from datetime import datetime, time
 from dateutil.relativedelta import relativedelta, TH
-from models import * 
+from models import *
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-engine = create_engine('sqlite:///database.db')
+engine = create_engine('sqlite:///new_database.db')
 schema = declarative_base().metadata
 Session = sessionmaker(bind=engine)
 session = Session()
@@ -51,6 +50,7 @@ def get_banknifty_ltp() -> float:
     return active_clients[0].market_quote_api.ltp(
         'NSE_INDEX|Nifty Bank', API_VERSION
     ).to_dict()['data']['NSE_INDEX:Nifty Bank']['last_price']
+
 
 def get_trades() -> list:
     """Return all the trades in the database"""
@@ -286,8 +286,6 @@ def weeks():
     print('Week1 for Nifty is', week1n)
     print('Month1 for Nifty is', month1n)
     print('Time to expiry for Nifty is', days_leftn)
-
-
 
 
 def price_strike(expiry: str, price, option):
@@ -852,8 +850,95 @@ def update() -> None:
 
                         # save the changes to the database
                         session.commit()
-            elif current_ltp > 80 and current_trade.status == TradeStatus.LIVE.value:
-                pass
+            elif current_ltp > 80 and current_trade.status == TradeStatus.LIVE.value and current_trade.strategy == Strategy.FIXED_PROFIT.value:
+                if current_trade.trade_type.split()[0] == 'Call':
+                    new_trade = Trades()  # Create a new trade object
+                    if client.get_flags().first().futures == -1:
+                        new_trade.quantity = client.strategy.futures * 15 * 2
+                    elif client.get_flags().first().futures == 0:
+                        new_trade.quantity = client.strategy.futures * 15
+                    elif client.get_flags().first().futures == 1:
+                        continue
+
+                    new_trade.strategy = Strategy.FUTURES.value
+                    new_trade.trade_type = TransactionType.BUY.value
+                    new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
+                    new_trade.days_left = ''
+                    new_trade.date_time = datetime.now().time()
+                    new_trade.exit_price = -1
+                    new_trade.exit_status = NOT_APPLICABLE
+                    new_trade.profit_loss = 0
+                    new_trade.client_id = client.client_id
+                    new_trade.symbol = month1b + 'FUT'
+                    new_trade.rank = 'Trend'
+                    parameters = client.market_quote_api.get_full_market_quote(
+                        get_token(new_trade.symbol), API_VERSION
+                    ).to_dict()
+                    new_trade.entry_price = parameters['data'][f'NSE_FO:{new_trade.symbol}']['depth']['sell'][0]['price'] - 0.05
+                    try:
+                        order = client.place_order(
+                            quantity=new_trade.quantity,
+                            price=new_trade.entry_price,
+                            product=Product.DELIVERY,
+                            tradingsymbol=new_trade.symbol,
+                            order_type=OrderType.LIMIT,
+                            transaction_type=TransactionType.BUY
+                        )
+                        order_id = order['data']['order_id']  # Extract the order_id
+                        new_trade.order_id = order_id
+                    except ApiException as e:
+                        print("Exception when calling OrderApi->place_order: %s\n" % e)
+
+                    new_trade.ltp = get_ltp(current_trade.symbol)
+
+                    # Use deepcopy to add the current state of new trade to Trades Table
+                    session.add(deepcopy(new_trade))
+                    client.get_flags().first().futures = 1
+                    session.commit()
+                elif current_trade.trade_type.split()[0] == 'Put':
+                    new_trade = Trades()  # Create a new trade object
+                    if client.get_flags().first().futures == 1:
+                        new_trade.quantity = client.strategy.futures * 15 * 2
+                    elif client.get_flags().first().futures == 0:
+                        new_trade.quantity = client.strategy.futures * 15
+                    elif client.get_flags().first().futures == -1:
+                        continue
+
+                    new_trade.strategy = Strategy.FUTURES.value
+                    new_trade.trade_type = TransactionType.SELL.value
+                    new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
+                    new_trade.days_left = ''
+                    new_trade.date_time = datetime.now().time()
+                    new_trade.exit_price = -1
+                    new_trade.exit_status = NOT_APPLICABLE
+                    new_trade.profit_loss = 0
+                    new_trade.client_id = client.client_id
+                    new_trade.symbol = month1b + 'FUT'
+                    new_trade.rank = 'Trend'
+                    parameters = client.market_quote_api.get_full_market_quote(
+                        get_token(new_trade.symbol), API_VERSION
+                    ).to_dict()
+                    new_trade.entry_price = parameters['data'][f'NSE_FO:{new_trade.symbol}']['depth']['sell'][0]['price'] - 0.05
+                    try:
+                        order = client.place_order(
+                            quantity=new_trade.quantity,
+                            price=new_trade.entry_price,
+                            product=Product.DELIVERY,
+                            tradingsymbol=new_trade.symbol,
+                            order_type=OrderType.LIMIT,
+                            transaction_type=TransactionType.SELL
+                        )
+                        order_id = order['data']['order_id']  # Extract the order_id
+                        new_trade.order_id = order_id
+                    except ApiException as e:
+                        print("Exception when calling OrderApi->place_order: %s\n" % e)
+
+                    new_trade.ltp = get_ltp(current_trade.symbol)
+
+                    # Use deepcopy to add the current state of new trade to Trades Table
+                    session.add(deepcopy(new_trade))
+                    client.get_flags().first().futures = -1
+                    session.commit()
             elif current_ltp < 70 and current_trade.status == TradeStatus.LIVE.value:
                 pass
             elif current_trade.status == TradeStatus.ORDERED.value:
