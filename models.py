@@ -21,13 +21,15 @@ class TradeStatus(Enum):
 
     use the .value attribute to get the value of the enum
     """
-    OPEN = 'Open'
+    OPEN = 'open'
     ORDERED = 'Ordered'
-    PENDING = 'Pending'
-    LIVE = 'Live'
-    EXECUTED = 'Executed'
-    CLOSED = 'Closed'
-    REJECTED = 'Rejected'
+    PENDING = 'pending'
+    LIVE = 'live'
+    EXECUTED = 'executed'
+    CLOSED = 'closed'
+    REJECTED = 'rejected'
+    COMPLETED = 'completed'
+    COMPLETE = 'complete'
 
 
 class TransactionType(Enum):
@@ -165,7 +167,7 @@ class Client:
             quantity: int,
             tradingsymbol: str,
             transaction_type: TransactionType,
-            product: Product=Product.INTRADAY,
+            product: Product=Product.DELIVERY,
             validity: Validity=Validity.DAY,
             price: float=0,
             order_type: OrderType=OrderType.MARKET,
@@ -182,7 +184,7 @@ class Client:
             transaction_type: TransactionType
 
         Default parameters:
-            product: Product.INTRADAY
+            product: Product.DELIVERY
             validity: Validity.DAY
             price: 0
             order_type: OrderType.MARKET
@@ -227,6 +229,7 @@ class Client:
             )
             trade.exit_price = order_details.data[-1].average_price
             trade.exit_status = order_details.data[-1].status
+            trade.exit_order_id = order_id
             match trade.trade_type:
                 case TransactionType.SELL.value:
                     trade.profit_loss = trade.exit_price - trade.entry_price
@@ -373,6 +376,7 @@ class Trades(Base):
     ltp = Column('LTP', Float, nullable=False)
     profit_loss = Column('PnL', Float, nullable=False)
     status = Column('Status', String, nullable=False)
+    exit_order_id = Column('ExitOrderId', String, default='NA')
 
     def __repr__(self):
         return f'<Trade(OrderId="{self.order_id}")>'

@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 TRUE = 1
 FALSE = 0
 
-# Define the schema of the database
+# Define the schema of the database\
 schema = declarative_base().metadata
 
 # Establish connection with the database
@@ -26,7 +26,8 @@ session = Session()
 # Create an instance of the LoginApi class
 api_instance = LoginApi()
 
-# login_url = https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id=d6cb7427-c883-456f-9e2a-5f01f944fd78&redirect_uri=https://account.upstox.com/contact-info/
+# FE6912: https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id=d6cb7427-c883-456f-9e2a-5f01f944fd78&redirect_uri=https://account.upstox.com/contact-info/
+# 42AFJE: https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id=4386a770-aed7-4e7f-8cb2-663b778e4457&redirect_uri=https://account.upstox.com/contact-info/
 
 # Select all the active client
 active_clients = session.query(Credentials).filter_by(is_active=TRUE)
@@ -40,7 +41,7 @@ for client in active_clients:
         # Authorize that client
         api_response = api_instance.token(
             api_version='2.0',
-            code=input(f"Enter the code for {client.client_id}: "),
+            code=input(f"Enter the code for {client.client_id}: "),  # g0S02u
             client_id=client.api_key,
             client_secret=client.api_secret,
             redirect_uri='https://account.upstox.com/contact-info/',

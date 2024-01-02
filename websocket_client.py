@@ -5,7 +5,7 @@ import ssl
 import upstox_client
 import websockets
 from google.protobuf.json_format import MessageToDict
-
+from pprint import pprint
 import MarketDataFeed_pb2 as pb
 
 
@@ -36,7 +36,7 @@ async def fetch_market_data():
     configuration = upstox_client.Configuration()
 
     api_version = '2.0'
-    configuration.access_token = 'eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiJGRTY5MTIiLCJqdGkiOiI2NThlNWZlMjQ2ZmQ0OTU0ODc4NWQwZWYiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNBY3RpdmUiOnRydWUsInNjb3BlIjpbImludGVyYWN0aXZlIiwiaGlzdG9yaWNhbCJdLCJpYXQiOjE3MDM4Mjk0NzQsImlzcyI6InVkYXBpLWdhdGV3YXktc2VydmljZSIsImV4cCI6MTcwMzg4NzIwMH0.BveFTJx1ZeOKVqwlEPtVavqCDh4v6a9PLx_ogU6PbHM'
+    configuration.access_token = 'eyJ0eXAiOiJKV1QiLCJrZXlfaWQiOiJza192MS4wIiwiYWxnIjoiSFMyNTYifQ.eyJzdWIiOiJGRTY5MTIiLCJqdGkiOiI2NTkzOTkxNTE3OGQzMjQ1ZjgxMTc2YmYiLCJpc011bHRpQ2xpZW50IjpmYWxzZSwiaXNBY3RpdmUiOnRydWUsInNjb3BlIjpbImludGVyYWN0aXZlIiwiaGlzdG9yaWNhbCJdLCJpYXQiOjE3MDQxNzE3OTcsImlzcyI6InVkYXBpLWdhdGV3YXktc2VydmljZSIsImV4cCI6MTcwNDIzMjgwMH0.yMRErXvHdWM5Bq8kwnH2eijHkCgolhdhlbifEoSfWWQ'
 
     # Get market data feed authorization
     response = get_market_data_feed_authorize(
@@ -46,15 +46,15 @@ async def fetch_market_data():
     async with websockets.connect(response.data.authorized_redirect_uri, ssl=ssl_context) as websocket:
         print('Connection established')
 
-        await asyncio.sleep(3)  # Wait for 1 second
+        await asyncio.sleep(1)  # Wait for 1 second
 
         # Data to be sent over the WebSocket
         data = {
             "guid": "someguid",
             "method": "sub",
             "data": {
-                "mode": "full",
-                "instrumentKeys": ["NSE_INDEX|Nifty Bank", "NSE_INDEX|Nifty 50"]
+                "mode": 'ltpc',
+                "instrumentKeys": ['NSE_FO|46849']
             }
         }
 
@@ -69,7 +69,6 @@ async def fetch_market_data():
 
             # Convert the decoded data to a dictionary
             data_dict = MessageToDict(decoded_data)
-            print(data_dict)
 
             # Print the dictionary representation
             print(json.dumps(data_dict))
