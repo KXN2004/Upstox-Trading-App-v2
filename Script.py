@@ -9,7 +9,7 @@ from models import *
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-engine = create_engine('sqlite:///new_database.db')
+engine = create_engine('sqlite:///database.db')
 schema = declarative_base().metadata
 Session = sessionmaker(bind=engine)
 session = Session()
@@ -296,7 +296,12 @@ def price_strike(expiry: str, price, option):
 
     if option.lower() == 'call':
         print('for new call')
+        count = 0
         for strike in strike_ce:
+            count += 1
+            if count > 10:
+                sleep(1)
+                count = 0
             symbol = expiry + str(strike) + 'CE'
             ltp = get_ltp(symbol)
             print(ltp, 'is price for', symbol)
@@ -526,11 +531,19 @@ def update() -> None:
                 print('LTP below 30')
                 # If rank of current trade is Call 1 or Put 1
                 if current_trade.rank in ('Call 1', 'Put 1'):
+                    print('Selling to be changed', current_trade.symbol)
+                    print(current_trade.rank)
                     # Filter out all the live trades with ranks ending with an `i`
                     insurance_trade = client.get_trades().filter(
                         Trades.rank == current_trade.rank + 'i',
                         Trades.status == TradeStatus.LIVE.value
                     ).first()
+
+                    # If there is no insurance trade
+                    if not insurance_trade:
+                        print('No insurance trade')
+                        # Continue to the next iteration
+                        continue
 
                     if insurance_trade.ltp < 7:
                         rank = insurance_trade.rank.split()[0]
@@ -576,7 +589,7 @@ def update() -> None:
                             session.commit()
 
                 if current_trade.rank in ('Call 0', 'Put 0', 'Call 1', 'Put 1'):
-
+                    current_trade.status = TradeStatus.CLOSING.value
                     rank = current_trade.rank.split()[0]
                     strike, symbol = price_strike(week1b, 50, rank)
 
@@ -589,7 +602,10 @@ def update() -> None:
                         new_trade = Trades()
                         new_trade.client_id = current_trade.client_id
                         new_trade.strategy = current_trade.strategy
-                        new_trade.quantity = current_trade.quantity
+                        if current_trade.rank in ('Call 1', 'Put 1'):
+                            new_trade.quantity = 2 * current_trade.quantity
+                        else:
+                            new_trade.quantity = current_trade.quantity
                         new_trade.rank = current_trade.rank
                         new_trade.days_left = current_trade.days_left
                         new_trade.trade_type = current_trade.trade_type
@@ -628,7 +644,7 @@ def update() -> None:
                 print("Current LTP is: ", current_ltp)
                 if current_trade.rank in ('Call 0', 'Put 0'):
                     client.close_trade(current_trade)
-
+                    current_trade.status = TradeStatus.CLOSING.value
                     rank = current_trade.rank.split()[0]
                     strike, symbol = price_strike(week1b, 8, rank)
 
@@ -765,11 +781,8 @@ def update() -> None:
                     ).first()
 
                     # Selling opposite rank with 1 quantity
-                    strike, symbol = price_strike(
-                        week1b,
-                        current_trade.exit_price / 2,
-                        rank
-                    )
+                    current_trade.symbol = client.get_trades().filter_by(rank=rank + ' 0', status='live').first().symbol
+
 
                     current_trade.rank = rank + ' 1'
                     current_trade.quantity = 2 * current_trade.quantity
@@ -782,7 +795,8 @@ def update() -> None:
                             order_type=OrderType.MARKET,
                             transaction_type=TransactionType.SELL
                         )
-                        order_id = order['data']['order_id']  # Extract the order_id
+                        order_id = order['data']['order_id']
+                        print(f'{datetime.now()}: {order_id} order checking1')  # Extract the order_id
                         order_details = client.order_api.get_order_details(
                             api_version=API_VERSION, order_id=order_id
                         )
@@ -1009,9 +1023,9 @@ if question.lower() == 'c':
             session.commit()
     if time(6, 16) < datetime.now().time() < time(16, 35):
         weeks()
-        schedule.every(15).seconds.do(update)
+        schedule.every(20).seconds.do(update)
 
-        schedule.every().day.at("15:29:02").do(fixed_profit_entry)
+        schedule.every().day.at("09:18:02").do(fixed_profit_entry)
     while True:
         schedule.run_pending()
         sleep(1)

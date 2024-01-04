@@ -30,6 +30,7 @@ class TradeStatus(Enum):
     REJECTED = 'rejected'
     COMPLETED = 'completed'
     COMPLETE = 'complete'
+    CLOSING = 'Closing'
 
 
 class TransactionType(Enum):
@@ -237,7 +238,7 @@ class Client:
                     trade.profit_loss = trade.entry_price - trade.exit_price
             trade.LTP = self.get_ltp(trade.symbol)
             trade.entry_status = TradeStatus.EXECUTED.value
-            trade.status = TradeStatus.CLOSED.value
+            trade.status = TradeStatus.CLOSING.value
 
             # Update the changes in the database
             self.session.commit()

@@ -1,7 +1,0 @@
-pandas-ta
-python-dateutil
-sqlalchemy
-schedule
-websockets
-protobuf
-upstox-python-sdk
