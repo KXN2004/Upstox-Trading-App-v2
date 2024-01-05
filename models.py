@@ -125,6 +125,7 @@ class Strategy(Enum):
     BANK_NIFTY = 'BankNifty'
     FUTURES = 'Futures'
     AUTO_FUTURES = 'AutoFutures'
+    FUT_HEDGE = 'FutureHedge'
 
 
 # Trade table: status column: OPENED|ORDERED|PENDING|EXECUTED|CLOSED|REJECTED
