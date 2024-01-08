@@ -31,6 +31,8 @@ class TradeStatus(Enum):
     COMPLETED = 'completed'
     COMPLETE = 'complete'
     CLOSING = 'Closing'
+    NOT_CLOSED = 'NotClosed'
+    OPEN_PENDGING = 'open pending'
 
 
 class TransactionType(Enum):
