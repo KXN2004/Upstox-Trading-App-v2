@@ -252,7 +252,7 @@ class Client:
 
     def get_flags(self) :
         """Return the Flags table for that client"""
-        return self.session.query(Flags).filter_by(client_id=self.client_id)
+        return self.session.query(Flags).filter_by(client_id=self.client_id).first()
 
     def get_ltp(self, tradingsymbol: str) -> float:
         """Returns the last traded price of the given tradingsymbol"""

@@ -3,6 +3,7 @@ import yfinance as yf
 import dateutil
 from pandas import DataFrame
 import pandas_ta as ta
+
 import schedule
 from random import randint
 from copy import deepcopy
@@ -31,9 +32,6 @@ no_of_requests = 0
 
 for _ in session.query(Credentials).filter_by(is_active=YES):
     active_clients.append(Client(_.client_id, _.access_token, session))
-
-
-print('ydh')
 
 def get_token(tradingsymbol: str) -> str:
     """Return the token of the given tradingsymbol"""
@@ -474,7 +472,6 @@ def fixed_profit_entry() -> None:
                 # Buying insurance 'CALL'
                 strike, symbol = price_strike(week1b, 8, 'Call')
 
-                new_trade = Trades()  # Makes a new row in the table
                 new_trade.client_id = client.client_id
                 new_trade.quantity = 2 * client.strategy.fixed_profit * 15
                 new_trade.rank = 'Call 1i'
@@ -836,11 +833,19 @@ def update() -> None:
                     session.commit()
 
                     # Sell with half ltp and quantity 2 times
-                    strike, symbol = price_strike(
-                        week1b,
-                        current_trade.exit_price / 2,
-                        rank
-                    )
+                    try:
+                        strike, symbol = price_strike(
+                            week1b,
+                            current_trade.exit_price / 2,
+                            rank
+                        )
+                    except Exception as e:
+                        print(e)
+                        strike, symbol = price_strike(
+                            week1b,
+                            current_trade.ltp / 2,
+                            rank
+                        )
 
                     new_trade = Trades()  # Makes a new row in the table
                     new_trade.client_id = current_trade.client_id
@@ -1017,6 +1022,7 @@ def update() -> None:
                         session.commit()
 
             elif current_ltp > 70 and current_trade.status == TradeStatus.LIVE.value and current_trade.strategy == Strategy.FIXED_PROFIT.value:
+                print('LTP above 70')
                 if current_trade.trade_type.split()[0] == 'Call':
                     new_trade = Trades()  # Create a new trade object
                     if client.get_flags().first().futures == -1:
@@ -1189,7 +1195,6 @@ if question.lower() == 'c':
     if time(6, 16) < datetime.now().time() < time(16, 35):
         weeks()
         schedule.every(20).seconds.do(update)
-
         schedule.every().day.at("09:18:02").do(fixed_profit_entry)
     while True:
         schedule.run_pending()
