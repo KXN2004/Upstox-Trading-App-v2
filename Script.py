@@ -9,6 +9,7 @@ from copy import deepcopy
 from datetime import datetime, time
 from dateutil.relativedelta import relativedelta, TH
 from models import *
+from models import Clients
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
@@ -47,7 +48,7 @@ def get_ltp(tradingsymbol: str) -> float:
     """Return the last traded price of the given tradingsymbol"""
     global no_of_requests
 
-    ltp = active_clients[no_of_requests % 2].market_quote_api.ltp(
+    ltp = active_clients[0].market_quote_api.ltp(
         get_token(tradingsymbol), API_VERSION
     ).to_dict()['data']['NSE_FO' + ':' + tradingsymbol]['last_price']
     no_of_requests += 1
@@ -58,7 +59,7 @@ def get_banknifty_ltp() -> float:
     """Return the last traded price of the Bank Nifty Index"""
     global no_of_requests
 
-    ltp = active_clients[0 % 2].market_quote_api.ltp(
+    ltp = active_clients[0].market_quote_api.ltp(
         'NSE_INDEX|Nifty Bank', API_VERSION
     ).to_dict()['data']['NSE_INDEX:Nifty Bank']['last_price']
     no_of_requests += 1
@@ -74,227 +75,239 @@ last_price = get_banknifty_ltp()
 
 last_price_0 = round(last_price / 100) * 100
 
-strike_ce = [(last_price_0 + 100 * factor) for factor in range(32)]
+strike_ce = [(last_price_0 + 100 * factor) for factor in range(44)]
 strike_ce = [(last_price_0 - 100)] + strike_ce
-strike_pe = [(last_price_0 - 100 * factor) for factor in range(37)]
+strike_pe = [(last_price_0 - 100 * factor) for factor in range(47)]
 strike_pe = [(last_price_0 + 100)] + strike_pe
 
 shortweek = 0
 
 to_date = datetime.strftime(datetime.now(), '%Y-%m-%d')
 from_date = datetime.strptime(to_date, '%Y-%m-%d')
+to_date = from_date + dateutil.relativedelta.relativedelta(days=1)
+to_date = datetime.strftime(to_date, '%Y-%m-%d')
 from_date = from_date - dateutil.relativedelta.relativedelta(days=5)
 from_date = datetime.strftime(from_date, '%Y-%m-%d')
 
 
 def supertrend(interval: str = '5m', period: int = 5, multiplier: int = 2) -> float:
+    global trend
     # Download historical data
     data = yf.download("^NSEBANK", start=from_date, end=to_date, interval=interval)
-
+    print(data)
     # Extract 5-minute interval OHLC data
     ohlc_data = data[['Open', 'High', 'Low', 'Close']]
 
     sti = ta.supertrend(ohlc_data['High'], ohlc_data['Low'], ohlc_data['Close'], period, multiplier)
+    trend = sti['SUPERTd_5_2.0'].iloc[-1]
+    print('New Trend is', trend)
     if sti['SUPERTd_5_2.0'].iloc[-1] != sti['SUPERTd_5_2.0'].iloc[-2]:
         return sti['SUPERTd_5_2.0'].iloc[-1]
     else:
         return sti['SUPERT_5_2.0'].iloc[-1]
 
 
-def close_future_hedge(client: Client) -> None:
+def close_future_hedge():
     super_trend = supertrend()
-
-    if super_trend == -1. or super_trend == 1.:
-        # checking for calls
-        put_ltp = client.get_trades().filter(
-            Trades.rank.startswith('Put'),
-            Trades.status == TradeStatus.LIVE.value,
-            Trades.trade_type == TransactionType.SELL.value,
-            Trades.strategy == Strategy.FIXED_PROFIT.value
-        ).first().ltp
-
-        call_ltp = client.get_trades().filter(
-            Trades.rank.startswith('Call'),
-            Trades.status == TradeStatus.LIVE.value,
-            Trades.trade_type == TransactionType.SELL.value,
-            Trades.strategy == Strategy.FIXED_PROFIT.value
-        ).first().ltp
-
-        if call_ltp > 65 and put_ltp > 65:
-            if super_trend == -1.0:
-                client.get_flags().futures = -1
-                # Sell double
-                new_trade = Trades()  # Create a new trade object
-                new_trade.strategy = Strategy.FUT_HEDGE.value
-                new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
-                new_trade.days_left = fromtime1
-                new_trade.date_time = datetime.now().time()
-                new_trade.exit_price = -1
-                new_trade.exit_status = NOT_APPLICABLE
-                new_trade.profit_loss = 0
-                new_trade.client_id = client.client_id
-                new_trade.quantity = client.strategy.futures * 15
-                new_trade.rank = 'Momentum'
-                new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
-                new_trade.date_time = datetime.now().time()
-                new_trade.symbol = month1b + 'FUT'
-                new_trade.trade_type = TransactionType.SELL.value
-                new_trade.ltp = get_ltp(new_trade.symbol)
-                parameters = client.market_quote_api.get_full_market_quote(get_token(new_trade.symbol), API_VERSION).to_dict()
-                new_trade.entry_price = parameters['data'][f'NSE_FO:{new_trade.symbol}']['depth']['sell'][0]['price'] - 0.05
-                try:
-                    order = client.place_order(
-                        quantity=new_trade.quantity * 2,
-                        price=0,
-                        tradingsymbol=new_trade.symbol,
-                        order_type=OrderType.MARKET,
-                        transaction_type=TransactionType.SELL
-                    )
-                    order_id = order['data']['order_id']  # Extract the order_id
-                    new_trade.order_id = order_id
-                except ApiException as e:
-                    print("Exception when calling OrderApi->place_order: %s\n" % e)
-
-                # Use deepcopy to add the current state of new trade to Trades Table
-                session.add(deepcopy(new_trade))
-
-                trade_to_exit = client.get_trades().filter(
+    print(super_trend)
+    for client in active_clients:
+        if client.strategy.futures > 0:
+            print('Checking for future hedge')
+            if super_trend == -1. or super_trend == 1.:
+                # checking for calls
+                put_ltp = client.get_trades().filter(
+                    Trades.rank.startswith('Put'),
                     Trades.status == TradeStatus.LIVE.value,
-                    Trades.strategy == Strategy.FUT_HEDGE.value
-                ).first()
-
-                order_details = client.order_api.get_order_details(
-                    api_version=API_VERSION, order_id=new_trade.order_id
-                )
-                trade_to_exit.exit_status = order_details.data[-1].status
-                trade_to_exit.status = TradeStatus.CLOSING.value
-                trade_to_exit.order_id = new_trade.order_id
-
-                # save the changes to the database
-                session.commit()
-            elif super_trend == 1.:
-                client.get_flags().futures = 1
-                # Buy double
-                new_trade = Trades()  # Create a new trade object
-                new_trade.strategy = Strategy.FUT_HEDGE.value
-                new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
-                new_trade.days_left = fromtime1
-                new_trade.date_time = datetime.now().time()
-                new_trade.exit_price = -1
-                new_trade.exit_status = NOT_APPLICABLE
-                new_trade.profit_loss = 0
-                new_trade.client_id = client.client_id
-                new_trade.quantity = client.strategy.futures * 15
-                new_trade.rank = 'Momentum'
-                new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
-                new_trade.date_time = datetime.now().time()
-                new_trade.symbol = month1b + 'FUT'
-                new_trade.trade_type = TransactionType.BUY.value
-                new_trade.ltp = get_ltp(new_trade.symbol)
-                parameters = client.market_quote_api.get_full_market_quote(get_token(new_trade.symbol),
-                                                                           API_VERSION).to_dict()
-                new_trade.entry_price = parameters['data'][f'NSE_FO:{new_trade.symbol}']['depth']['sell'][0][
-                                            'price'] - 0.05
-                try:
-                    order = client.place_order(
-                        quantity=new_trade.quantity * 2,
-                        price=0,
-                        tradingsymbol=new_trade.symbol,
-                        order_type=OrderType.MARKET,
-                        transaction_type=TransactionType.BUY
-                    )
-                    order_id = order['data']['order_id']  # Extract the order_id
-                    new_trade.order_id = order_id
-                except ApiException as e:
-                    print("Exception when calling OrderApi->place_order: %s\n" % e)
-
-                # Use deepcopy to add the current state of new trade to Trades Table
-                session.add(deepcopy(new_trade))
-
-                trade_to_exit = client.get_trades().filter(
+                    Trades.trade_type == TransactionType.SELL.value,
+                    Trades.strategy == Strategy.FIXED_PROFIT.value
+                ).first().ltp
+                print('Put LTP is', put_ltp)
+                call_ltp = client.get_trades().filter(
+                    Trades.rank.startswith('Call'),
                     Trades.status == TradeStatus.LIVE.value,
-                    Trades.strategy == Strategy.FUT_HEDGE.value
-                ).first()
+                    Trades.trade_type == TransactionType.SELL.value,
+                    Trades.strategy == Strategy.FIXED_PROFIT.value
+                ).first().ltp
+                print('Call LTP is', call_ltp)
+                if call_ltp > 65 and put_ltp > 65:
+                    if super_trend == -1:
+                        client.get_flags().future = -1
+                        # Sell double
+                        print('Selling future double as both high')
+                        new_trade = Trades()  # Create a new trade object
+                        new_trade.strategy = Strategy.FUT_HEDGE.value
+                        new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
+                        new_trade.days_left = fromtime1
+                        new_trade.date_time = datetime.now().time()
+                        new_trade.exit_price = -1
+                        new_trade.exit_status = NOT_APPLICABLE
+                        new_trade.profit_loss = 0
+                        new_trade.client_id = client.client_id
+                        new_trade.quantity = client.strategy.futures * 15
+                        new_trade.rank = 'Trend'
+                        new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
+                        new_trade.date_time = datetime.now().time()
+                        new_trade.symbol = month1b + 'FUT'
+                        new_trade.trade_type = TransactionType.SELL.value
+                        new_trade.ltp = get_ltp(new_trade.symbol)
+                        parameters = client.market_quote_api.get_full_market_quote(get_token(new_trade.symbol), API_VERSION).to_dict()
+                        new_trade.entry_price = parameters['data'][f'NSE_FO:{new_trade.symbol}']['depth']['sell'][0]['price'] - 0.05
+                        try:
+                            order = client.place_order(
+                                quantity=new_trade.quantity * 2,
+                                price=0,
+                                tradingsymbol=new_trade.symbol,
+                                order_type=OrderType.MARKET,
+                                transaction_type=TransactionType.SELL
+                            )
+                            order_id = order['data']['order_id']  # Extract the order_id
+                            new_trade.order_id = order_id
+                        except ApiException as e:
+                            print("Exception when calling OrderApi->place_order: %s\n" % e)
 
-                order_details = client.order_api.get_order_details(
-                    api_version=API_VERSION, order_id=new_trade.order_id
-                )
-                trade_to_exit.exit_status = order_details.data[-1].status
-                trade_to_exit.status = TradeStatus.CLOSING.value
-                trade_to_exit.order_id = new_trade.order_id
+                        # Use deepcopy to add the current state of new trade to Trades Table
+                        session.add(deepcopy(new_trade))
 
-                # save the changes to the database
-                session.commit()
-        elif call_ltp > 65 > put_ltp:
-            if super_trend == -1.:
-                client.get_flags().futures = 0
-                # Sell single
-                trade_to_exit = client.get_trades().filter(
-                    Trades.status == TradeStatus.LIVE.value,
-                    Trades.strategy == Strategy.FUT_HEDGE.value
-                ).first()
+                        trade_to_exit = client.get_trades().filter(
+                            Trades.status == TradeStatus.LIVE.value,
+                            Trades.strategy == Strategy.FUT_HEDGE.value
+                        ).first()
 
-                if trade_to_exit.trade_type == TransactionType.BUY.value:
-                    close_trade_type = TransactionType.SELL.value
-                else:
-                    close_trade_type = TransactionType.BUY.value
+                        order_details = client.order_api.get_order_details(
+                            api_version=API_VERSION, order_id=new_trade.order_id
+                        )
+                        trade_to_exit.exit_status = order_details.data[-1].status
+                        trade_to_exit.status = TradeStatus.CLOSING.value
+                        trade_to_exit.order_id = new_trade.order_id
 
-                order = client.place_order(
-                    quantity=trade_to_exit.quantity,
-                    price=0,
-                    tradingsymbol=trade_to_exit.symbol,
-                    order_type=OrderType.MARKET,
-                    transaction_type=close_trade_type
-                )
-                order_id = order['data']['order_id']  # Extract the order_id
+                        # save the changes to the database
+                        session.commit()
+                    elif super_trend == 1.:
+                        client.get_flags().future = 1
+                        # Buy double
+                        print('Buying future double as both high')
+                        new_trade = Trades()  # Create a new trade object
+                        new_trade.strategy = Strategy.FUT_HEDGE.value
+                        new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
+                        new_trade.days_left = fromtime1
+                        new_trade.date_time = datetime.now().time()
+                        new_trade.exit_price = -1
+                        new_trade.exit_status = NOT_APPLICABLE
+                        new_trade.profit_loss = 0
+                        new_trade.client_id = client.client_id
+                        new_trade.quantity = client.strategy.futures * 15
+                        new_trade.rank = 'Trend'
+                        new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
+                        new_trade.date_time = datetime.now().time()
+                        new_trade.symbol = month1b + 'FUT'
+                        new_trade.trade_type = TransactionType.BUY.value
+                        new_trade.ltp = get_ltp(new_trade.symbol)
+                        parameters = client.market_quote_api.get_full_market_quote(get_token(new_trade.symbol),
+                                                                                   API_VERSION).to_dict()
+                        new_trade.entry_price = parameters['data'][f'NSE_FO:{new_trade.symbol}']['depth']['sell'][0][
+                                                    'price'] - 0.05
+                        try:
+                            order = client.place_order(
+                                quantity=new_trade.quantity * 2,
+                                price=0,
+                                tradingsymbol=new_trade.symbol,
+                                order_type=OrderType.MARKET,
+                                transaction_type=TransactionType.BUY
+                            )
+                            order_id = order['data']['order_id']  # Extract the order_id
+                            new_trade.order_id = order_id
+                        except ApiException as e:
+                            print("Exception when calling OrderApi->place_order: %s\n" % e)
 
-                order_details = client.order_api.get_order_details(
-                    api_version=API_VERSION, order_id=order_id
-                )
-                trade_to_exit.exit_status = order_details.data[-1].status
-                trade_to_exit.status = TradeStatus.CLOSING.value
-                trade_to_exit.order_id = order_id
+                        # Use deepcopy to add the current state of new trade to Trades Table
+                        session.add(deepcopy(new_trade))
 
-                # save the changes to the database
-                session.commit()
-            elif super_trend == 1.:
-                client.get_flags().futures = 1
-                # Buy single new
-                new_trade = Trades()  # Create a new trade object
-                new_trade.strategy = Strategy.FUT_HEDGE.value
-                new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
-                new_trade.days_left = fromtime1
-                new_trade.date_time = datetime.now().time()
-                new_trade.exit_price = -1
-                new_trade.exit_status = NOT_APPLICABLE
-                new_trade.profit_loss = 0
-                new_trade.client_id = client.client_id
-                new_trade.quantity = client.strategy.futures * 15
-                new_trade.rank = 'Momentum'
-                new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
-                new_trade.date_time = datetime.now().time()
-                new_trade.symbol = month1b + 'FUT'
-                new_trade.trade_type = TransactionType.BUY.value
-                new_trade.ltp = get_ltp(new_trade.symbol)
-                parameters = client.market_quote_api.get_full_market_quote(get_token(new_trade.symbol),
-                                                                           API_VERSION).to_dict()
-                new_trade.entry_price = parameters['data'][f'NSE_FO:{new_trade.symbol}']['depth']['sell'][0][
-                                            'price'] - 0.05
-                try:
-                    order = client.place_order(
-                        quantity=new_trade.quantity,
-                        price=0,
-                        tradingsymbol=new_trade.symbol,
-                        order_type=OrderType.MARKET,
-                        transaction_type=TransactionType.BUY
-                    )
-                    order_id = order['data']['order_id']  # Extract the order_id
-                    new_trade.order_id = order_id
-                except ApiException as e:
-                    print("Exception when calling OrderApi->place_order: %s\n" % e)
+                        trade_to_exit = client.get_trades().filter(
+                            Trades.status == TradeStatus.LIVE.value,
+                            Trades.strategy == Strategy.FUT_HEDGE.value
+                        ).first()
 
-                # Use deepcopy to add the current state of new trade to Trades Table
-                session.add(deepcopy(new_trade))
+                        order_details = client.order_api.get_order_details(
+                            api_version=API_VERSION, order_id=new_trade.order_id
+                        )
+                        trade_to_exit.exit_status = order_details.data[-1].status
+                        trade_to_exit.status = TradeStatus.CLOSING.value
+                        trade_to_exit.order_id = new_trade.order_id
+
+                        # save the changes to the database
+                        session.commit()
+                elif call_ltp > 65 > put_ltp:
+                    if super_trend == -1.:
+                        client.get_flags().future = 0
+                        # Sell single
+                        print('Closing future long')
+                        trade_to_exit = client.get_trades().filter(
+                            Trades.status == TradeStatus.LIVE.value,
+                            Trades.strategy == Strategy.FUT_HEDGE.value
+                        ).first()
+
+                        if trade_to_exit.trade_type == TransactionType.BUY.value:
+                            close_trade_type = TransactionType.SELL
+                        else:
+                            close_trade_type = TransactionType.BUY
+
+                        order = client.place_order(
+                            quantity=trade_to_exit.quantity,
+                            price=0,
+                            tradingsymbol=trade_to_exit.symbol,
+                            order_type=OrderType.MARKET,
+                            transaction_type=close_trade_type
+                        )
+                        order_id = order['data']['order_id']  # Extract the order_id
+
+                        order_details = client.order_api.get_order_details(
+                            api_version=API_VERSION, order_id=order_id
+                        )
+                        trade_to_exit.exit_status = order_details.data[-1].status
+                        trade_to_exit.status = TradeStatus.CLOSING.value
+                        trade_to_exit.order_id = order_id
+
+                        # save the changes to the database
+                        session.commit()
+                    elif super_trend == 1.:
+                        client.get_flags().future = 1
+                        # Buy single new
+                        print('Buying future long')
+                        new_trade = Trades()  # Create a new trade object
+                        new_trade.strategy = Strategy.FUT_HEDGE.value
+                        new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
+                        new_trade.days_left = fromtime1
+                        new_trade.date_time = datetime.now().time()
+                        new_trade.exit_price = -1
+                        new_trade.exit_status = NOT_APPLICABLE
+                        new_trade.profit_loss = 0
+                        new_trade.client_id = client.client_id
+                        new_trade.quantity = client.strategy.futures * 15
+                        new_trade.rank = 'Trend'
+                        new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
+                        new_trade.date_time = datetime.now().time()
+                        new_trade.symbol = month1b + 'FUT'
+                        new_trade.trade_type = TransactionType.BUY.value
+                        new_trade.ltp = get_ltp(new_trade.symbol)
+                        parameters = client.market_quote_api.get_full_market_quote(get_token(new_trade.symbol),
+                                                                                   API_VERSION).to_dict()
+                        new_trade.entry_price = parameters['data'][f'NSE_FO:{new_trade.symbol}']['depth']['sell'][0][
+                                                    'price'] - 0.05
+                        try:
+                            order = client.place_order(
+                                quantity=new_trade.quantity,
+                                price=0,
+                                tradingsymbol=new_trade.symbol,
+                                order_type=OrderType.MARKET,
+                                transaction_type=TransactionType.BUY
+                            )
+                            order_id = order['data']['order_id']  # Extract the order_id
+                            new_trade.order_id = order_id
+                        except ApiException as e:
+                            print("Exception when calling OrderApi->place_order: %s\n" % e)
+
+                        # Use deepcopy to add the current state of new trade to Trades Table
+                        session.add(deepcopy(new_trade))
 
                 # save the changes to the database
                 session.commit()
@@ -341,7 +354,7 @@ def close_future_hedge(client: Client) -> None:
                 # save the changes to the database
                 session.commit()
             elif super_trend == 1.:
-                client.get_flags().futures = 0
+                client.get_flags().future = 0
                 # Buy single to close
                 trade_to_exit = client.get_trades().filter(
                     Trades.status == TradeStatus.LIVE.value,
@@ -349,9 +362,9 @@ def close_future_hedge(client: Client) -> None:
                 ).first()
 
                 if trade_to_exit.trade_type == TransactionType.BUY.value:
-                    close_trade_type = TransactionType.SELL.value
+                    close_trade_type = TransactionType.SELL
                 else:
-                    close_trade_type = TransactionType.BUY.value
+                    close_trade_type = TransactionType.BUY
 
                 order = client.place_order(
                     quantity=trade_to_exit.quantity,
@@ -373,8 +386,8 @@ def close_future_hedge(client: Client) -> None:
                 session.commit()
         elif call_ltp < 65 and put_ltp < 65:
             if super_trend == -1.:
-                if client.get_flags().futures == 1:
-                    client.get_flags().futures = 0
+                if client.get_flags().future == 1:
+                    client.get_flags().future = 0
                     # Sell Single to close
                     trade_to_exit = client.get_trades().filter(
                         Trades.status == TradeStatus.LIVE.value,
@@ -382,9 +395,9 @@ def close_future_hedge(client: Client) -> None:
                     ).first()
 
                     if trade_to_exit.trade_type == TransactionType.BUY.value:
-                        close_trade_type = TransactionType.SELL.value
+                        close_trade_type = TransactionType.SELL
                     else:
-                        close_trade_type = TransactionType.BUY.value
+                        close_trade_type = TransactionType.BUY
 
                     order = client.place_order(
                         quantity=trade_to_exit.quantity,
@@ -414,9 +427,9 @@ def close_future_hedge(client: Client) -> None:
                     ).first()
 
                     if trade_to_exit.trade_type == TransactionType.BUY.value:
-                        close_trade_type = TransactionType.SELL.value
+                        close_trade_type = TransactionType.SELL
                     else:
-                        close_trade_type = TransactionType.BUY.value
+                        close_trade_type = TransactionType.BUY
 
                     order = client.place_order(
                         quantity=trade_to_exit.quantity,
@@ -438,7 +451,7 @@ def close_future_hedge(client: Client) -> None:
                     session.commit()
 
 def weeks():
-    global week0b, week1b, fromtime0, fromtime1, thursday, days_left, month0b, month1b, wednesday, wednesday2, week0n, week1n, fromtime0n, fromtime1n, days_leftn, shortweek
+    global week0b, week1b, fromtime0, fromtime1, thursday, days_left, month0b, month1b, wednesday, wednesday2, week0n, week1n, fromtime0n, fromtime1n, days_leftn, shortweek, trend
     today = datetime.today().weekday()
     todayte = datetime.today()
     cmon = todayte.month
@@ -655,13 +668,22 @@ def weeks():
     print('Month1 for Nifty is', month1n)
     print('Time to expiry for Nifty is', days_leftn)
 
+    data = yf.download("^NSEBANK", start=from_date, end=to_date, interval='5m')
+
+    # Extract 5-minute interval OHLC data
+    ohlc_data = data[['Open', 'High', 'Low', 'Close']]
+
+    sti = ta.supertrend(ohlc_data['High'], ohlc_data['Low'], ohlc_data['Close'], 5, 2)
+    trend = sti['SUPERTd_5_2.0'].iloc[-1]
+    print('Trend is', trend)
+
 
 def price_strike(expiry: str, price, option):
 
     print('Inside price_strike')
 
     buff2 = 0
-
+    strikebuff = 0
     if option.lower() == 'call':
         print('for new call')
         count = 0
@@ -671,48 +693,47 @@ def price_strike(expiry: str, price, option):
                 sleep(1)
                 count = 0
             symbol = expiry + str(strike) + 'CE'
-            ltp = get_ltp(symbol)
-            print(ltp, 'is price for', symbol)
+            try:
+                ltp = get_ltp(symbol)
+                print(ltp, 'is price for', symbol)
+            except:
+                print('Error in fetching price for', symbol)
+                continue
             if price > ltp:
                 buff1 = ltp
                 if buff2 - price > price - buff1:
                     return strike, symbol
                 else:
-                    if 'BANK' in symbol:
-                        symbol = expiry + str(strike - 100) + 'CE'
-                        strike -= 100
-                        return strike, symbol
-                    else:
-                        symbol = expiry + str(strike - 50) + 'CE'
-                        strike -= 50
-                        return strike, symbol
+                    symbol = expiry + str(strikebuff) + 'CE'
+                    strike = strikebuff
+                    return strike, symbol
             else:
                 buff2 = ltp
+                strikebuff = strike
     elif option.lower() == 'put':
         print('for new put')
         for strike in strike_pe:
             symbol = expiry + str(strike) + 'PE'
             print(symbol)
-            ltp = get_ltp(symbol)
-            print(ltp, 'is price for', symbol)
+            try:
+                ltp = get_ltp(symbol)
+                print(ltp, 'is price for', symbol)
+            except:
+                print('Error in fetching price for', symbol)
+                continue
             if price > ltp:
                 buff1 = ltp
                 if buff2 - price > price - buff1:
                     print(symbol)
                     return strike, symbol
                 else:
-                    if 'BANK' in symbol:
-                        symbol = expiry + str(strike + 100) + 'PE'
-                        strike += 100
-                        print(symbol)
-                        return strike, symbol
-                    else:
-                        symbol = expiry + str(strike + 50) + 'PE'
-                        strike += 50
-                        print(symbol)
-                        return strike, symbol
+                    symbol = expiry + str(strikebuff) + 'PE'
+                    strike = strikebuff
+                    print(symbol)
+                    return strike, symbol
             else:
                 buff2 = ltp
+                strikebuff = strike
 
 
 def fixed_profit_entry() -> None:
@@ -730,8 +751,8 @@ def fixed_profit_entry() -> None:
     new_trade.profit_loss = 0
 
     # Common for all clients
-    _, put_symbol = price_strike('BANKNIFTY24110', 60, PUT)
-    _, call_symbol = price_strike('BANKNIFTY24110', 60, CALL)
+    _, put_symbol = price_strike(week1b, 60, PUT)
+    _, call_symbol = price_strike(week1b, 60, CALL)
 
     print('call symbol is ', call_symbol)
 
@@ -758,9 +779,11 @@ def fixed_profit_entry() -> None:
                 # Buying insurance 'CALL'
                 strike, symbol = price_strike(week1b, 8, 'Call')
 
-                new_trade = Trades()  # Makes a new row in the table
                 new_trade.client_id = client.client_id
-                new_trade.quantity = 2 * client.strategy.fixed_profit * 15
+                if client.strategy.option_selling == 2:
+                    new_trade.quantity = client.strategy.fixed_profit * 15
+                else:
+                    new_trade.quantity = 2 * client.strategy.fixed_profit * 15
                 new_trade.rank = 'Call 1i'
                 new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
                 new_trade.date_time = datetime.now().time()
@@ -816,7 +839,10 @@ def fixed_profit_entry() -> None:
             # For Call
             new_trade.trade_type = TransactionType.SELL.value
             new_trade.order_id = randint(10, 99)
-            new_trade.rank = 'Call 0'
+            if client.strategy.option_selling == 2:
+                new_trade.rank = 'Call 1'
+            else:
+                new_trade.rank = 'Call 0'
             parameters = client.market_quote_api.get_full_market_quote(get_token(call_symbol), API_VERSION).to_dict()
             new_trade.entry_price = parameters['data'][f'NSE_FO:{call_symbol}']['depth']['sell'][0]['price'] - 0.05
             try:
@@ -842,7 +868,10 @@ def fixed_profit_entry() -> None:
             # For Put
 
             new_trade.order_id = randint(10, 99)
-            new_trade.rank = 'Put 0'
+            if client.strategy.option_selling == 2:
+                new_trade.rank = 'Put 1'
+            else:
+                new_trade.rank = 'Put 0'
             parameters = client.market_quote_api.get_full_market_quote(get_token(put_symbol), API_VERSION).to_dict()
             new_trade.entry_price = parameters['data'][f'NSE_FO:{put_symbol}']['depth']['sell'][0]['price'] - 0.05
             try:
@@ -893,8 +922,8 @@ def next_expiry(client, current_trade) -> None:
         #     print('Doing this on comming week for monthly expiry')
         #     wednesday2 = wednesday2 - relativedelta(days=6)
 
-        fromtime2 = datetime(2024, 1, 10, 15, 30)
-        week2b = 'BANKNIFTY24110'
+        fromtime2 = datetime(2024, 1, 17, 15, 30)
+        week2b = 'BANKNIFTY24117'
         rank = current_trade.rank.split()[0]
         if client.strategy.option_selling == 1:
             client.get_flags().first_leg = 0
@@ -954,7 +983,7 @@ def next_expiry(client, current_trade) -> None:
 
 def update() -> None:
     """Update the Trades table"""
-    print("Refreshing data")
+    print("Refreshing data", datetime.now().time())
     for client in active_clients:
         for current_trade in client.get_trades():
             current_ltp = get_ltp(current_trade.symbol)
@@ -987,7 +1016,10 @@ def update() -> None:
                             new_trade = Trades()
                             new_trade.client_id = insurance_trade.client_id
                             new_trade.strategy = insurance_trade.strategy
-                            new_trade.quantity = 2 * client.strategy.fixed_profit * 15
+                            if client.strategy.option_selling == 1:
+                                new_trade.quantity = 2 * client.strategy.fixed_profit * 15
+                            else:
+                                new_trade.quantity = client.strategy.fixed_profit * 15
                             new_trade.rank = insurance_trade.rank
                             new_trade.days_left = insurance_trade.days_left
                             new_trade.trade_type = insurance_trade.trade_type
@@ -1036,7 +1068,7 @@ def update() -> None:
                         new_trade = Trades()
                         new_trade.client_id = current_trade.client_id
                         new_trade.strategy = current_trade.strategy
-                        if current_trade.rank in ('Call 1', 'Put 1'):
+                        if current_trade.rank in ('Call 1', 'Put 1') and client.strategy.option_selling == 1:
                             new_trade.quantity = 2 * client.strategy.fixed_profit * 15
                         else:
                             new_trade.quantity = client.strategy.fixed_profit * 15
@@ -1074,7 +1106,7 @@ def update() -> None:
 
                         # save the changes to the database
                         session.commit()
-            elif current_ltp > 120 and current_trade.status == TradeStatus.LIVE.value:
+            elif current_ltp > 120 and current_trade.status == TradeStatus.LIVE.value and current_trade.strategy == Strategy.FIXED_PROFIT.value:
                 print("Current LTP is: ", current_ltp)
                 if current_trade.rank in ('Call 0', 'Put 0'):
                     client.close_trade(current_trade)
@@ -1301,24 +1333,26 @@ def update() -> None:
                         session.commit()
 
             elif current_ltp > 70 and current_trade.status == TradeStatus.LIVE.value and current_trade.strategy == Strategy.FIXED_PROFIT.value:
-                if current_trade.rank.split()[0] == 'Call':
+                print('Trend is', trend)
+                if current_trade.rank.split()[0] == 'Call' and trend == 1 and client.get_flags().future < 1:
                     new_trade = Trades()  # Create a new trade object
-                    if client.get_flags().first().future == -1:
+                    if client.get_flags().future == -1:
                         new_trade.quantity = client.strategy.futures * 15 * 2
                         trade_to_close = client.get_trades().filter_by(
                             status=TradeStatus.LIVE.value,
                             strategy=Strategy.FUT_HEDGE.value
                         ).first()
+
                         trade_to_close.status = TradeStatus.CLOSING.value
-                    elif client.get_flags().first().future == 0:
+                    elif client.get_flags().future == 0:
                         new_trade.quantity = client.strategy.futures * 15
-                    elif client.get_flags().first().future == 1:
+                    elif client.get_flags().future == 1:
                         continue
 
                     new_trade.strategy = Strategy.FUT_HEDGE.value
                     new_trade.trade_type = TransactionType.BUY.value
                     new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
-                    new_trade.days_left = ''
+                    new_trade.days_left = fromtime1
                     new_trade.date_time = datetime.now().time()
                     new_trade.exit_price = -1
                     new_trade.exit_status = NOT_APPLICABLE
@@ -1344,31 +1378,31 @@ def update() -> None:
                     except ApiException as e:
                         print("Exception when calling OrderApi->place_order: %s\n" % e)
                     new_trade.ltp = get_ltp(current_trade.symbol)
-                    if client.get_flags().first().future == -1:
+                    if client.get_flags().future == -1:
                         trade_to_close.exit_order_id = order_id
-                    client.get_flags().futures = 1
+                    client.get_flags().future = 1
 
                     # Use deepcopy to add the current state of new trade to Trades Table
                     session.add(deepcopy(new_trade))
 
                     session.commit()
-                elif current_trade.rank.split()[0] == 'Put':
+                elif current_trade.rank.split()[0] == 'Put' and trend == -1:
                     new_trade = Trades()  # Create a new trade object
-                    if client.get_flags().first().future == 1:
+                    if client.get_flags().future == 1:
                         new_trade.quantity = client.strategy.futures * 15 * 2
                         trade_to_close = client.get_trades().filter_by(
                             status=TradeStatus.LIVE.value,
                             strategy=Strategy.FUT_HEDGE.value
                         ).first()
-                    elif client.get_flags().first().future == 0:
+                    elif client.get_flags().future == 0:
                         new_trade.quantity = client.strategy.futures * 15
-                    elif client.get_flags().first().future == -1:
+                    elif client.get_flags().future == -1:
                         continue
 
                     new_trade.strategy = Strategy.FUTURES.value
                     new_trade.trade_type = TransactionType.SELL.value
                     new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
-                    new_trade.days_left = ''
+                    new_trade.days_left = fromtime1
                     new_trade.date_time = datetime.now().time()
                     new_trade.exit_price = -1
                     new_trade.exit_status = NOT_APPLICABLE
@@ -1395,9 +1429,9 @@ def update() -> None:
                         print("Exception when calling OrderApi->place_order: %s\n" % e)
 
                     new_trade.ltp = get_ltp(current_trade.symbol)
-                    if client.get_flags().first().future == 1:
+                    if client.get_flags().future == 1:
                         trade_to_close.exit_order_id = order_id
-                    client.get_flags().first().future = -1
+                    client.get_flags().future = -1
                     # Use deepcopy to add the current state of new trade to Trades Table
                     session.add(deepcopy(new_trade))
 
@@ -1488,10 +1522,23 @@ def update() -> None:
                 current_trade.profit_loss = round(current_trade.entry_price - current_trade.ltp, 2) * current_trade.quantity
             else:
                 current_trade.profit_loss = round(current_trade.ltp - current_trade.entry_price, 2) * current_trade.quantity
+        # session.query(Clients).filter_by(client_id=client.client_id).first()
 
+        api_instance = upstox_client.UserApi(client.api_client)
+        used_margin = api_instance.get_user_fund_margin(API_VERSION).data['equity'].used_margin
+        available_margin = api_instance.get_user_fund_margin(API_VERSION).data['equity'].available_margin
+        row = session.query(Clients).filter_by(client_id=client.client_id).first()
+        row.used = used_margin
+        row.available = available_margin
+        session.commit()
+        # api_instance = upstox_client.PortfolioApi(client.api_client)
+        # for trade in api_instance.get_positions(API_VERSION).data:
+        #     if trade.realised = '':
+        #         client.get_trades().query()
 
-weeks()
-update()
+        if available_margin < 60000:
+            print(f'Low margin in {client.client_id}, Rs. {available_margin}')
+
 question = input('Do you want to start fresh or continue from where stopped?(F/C): ')
 
 if question.lower() == 'c':
@@ -1509,7 +1556,7 @@ if question.lower() == 'c':
             flags.max_profit = flags.max_loss = 0
             print('Updated flags')
             session.commit()
-    if time(6, 16) < datetime.now().time() < time(16, 35):
+    if time(00, 10) < datetime.now().time() < time(16, 35):
         weeks()
         schedule.every(20).seconds.do(update)
         schedule.every().day.at("09:17:01").do(close_future_hedge)
@@ -1588,7 +1635,7 @@ if question.lower() == 'c':
         schedule.every().day.at("15:20:01").do(close_future_hedge)
         schedule.every().day.at("15:25:01").do(close_future_hedge)
 
-        schedule.every().day.at("09:18:02").do(fixed_profit_entry)
+        # schedule.every().day.at("09:18:02").do(fixed_profit_entry)
     while True:
         schedule.run_pending()
         sleep(1)
