@@ -100,10 +100,21 @@ def supertrend(interval: str = '5m', period: int = 5, multiplier: int = 2) -> fl
 
     sti = ta.supertrend(ohlc_data['High'], ohlc_data['Low'], ohlc_data['Close'], period, multiplier)
     trend = sti['SUPERTd_5_2.0'].iloc[-1]
+    print(sti[['SUPERT_5_2.0', 'SUPERTd_5_2.0']].tail())
     print('New Trend is', trend)
-    if sti['SUPERTd_5_2.0'].iloc[-1] != sti['SUPERTd_5_2.0'].iloc[-2]:
-        return sti['SUPERTd_5_2.0'].iloc[-1]
+    print('-1 is ', sti['SUPERTd_5_2.0'].iloc[-1], sti['SUPERT_5_2.0'].iloc[-1])
+    print('-2 is ', sti['SUPERTd_5_2.0'].iloc[-2], sti['SUPERT_5_2.0'].iloc[-2])
+    if sti['SUPERT_5_2.0'].iloc[-1] > ohlc_data['Close'].iloc[-1] and sti['SUPERT_5_2.0'].iloc[-2] < ohlc_data['Close'].iloc[-2]:
+        print('Trend changed to -1')
+        return -1
+    elif sti['SUPERT_5_2.0'].iloc[-1] < ohlc_data['Close'].iloc[-1] and sti['SUPERT_5_2.0'].iloc[-2] > ohlc_data['Close'].iloc[-2]:
+        print('Trend changed to 1')
+        return 1
+    # if sti['SUPERTd_5_2.0'].iloc[-1] != sti['SUPERTd_5_2.0'].iloc[-2]:
+    #     print('Trend is changed', sti['SUPERTd_5_2.0'].iloc[-1])
+    #     return sti['SUPERTd_5_2.0'].iloc[-1]
     else:
+        print('Trend is same as before')
         return sti['SUPERT_5_2.0'].iloc[-1]
 
 
@@ -112,8 +123,8 @@ def close_future_hedge():
     print(super_trend)
     for client in active_clients:
         if client.strategy.futures > 0:
-            print('Checking for future hedge')
-            if super_trend == -1. or super_trend == 1.:
+            print('Checking for future hedge for closing')
+            if super_trend == -1 or super_trend == 1:
                 # checking for calls
                 put_ltp = client.get_trades().filter(
                     Trades.rank.startswith('Put'),
@@ -769,7 +780,7 @@ def fixed_profit_entry() -> None:
         # Proceed if client has an open order in fixed profit strategy
         proceed = not client.get_trades().filter(
             Trades.strategy == Strategy.FIXED_PROFIT.value,
-            Trades.status != TradeStatus.LIVE.value
+            Trades.status == TradeStatus.LIVE.value
         ).all()
 
         # If fixed profit and bank nifty flags are enabled for the client
@@ -1635,7 +1646,7 @@ if question.lower() == 'c':
         schedule.every().day.at("15:20:01").do(close_future_hedge)
         schedule.every().day.at("15:25:01").do(close_future_hedge)
 
-        # schedule.every().day.at("09:18:02").do(fixed_profit_entry)
+        schedule.every().day.at("11:11:02").do(fixed_profit_entry)
     while True:
         schedule.run_pending()
         sleep(1)
