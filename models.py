@@ -220,6 +220,8 @@ class Client:
                 trade_type = TransactionType.BUY
             case TransactionType.BUY.value:
                 trade_type = TransactionType.SELL
+        trade.status = TradeStatus.CLOSING.value
+        self.session.commit()
         try:
             order_id = self.place_order(
                 quantity=trade.quantity,
@@ -228,12 +230,13 @@ class Client:
                 order_type=OrderType.MARKET,
                 transaction_type=trade_type
             )['data']['order_id']
+            trade.exit_order_id = order_id
             order_details = self.order_api.get_order_details(
                 api_version=API_VERSION, order_id=order_id
             )
             trade.exit_price = order_details.data[-1].average_price
             trade.exit_status = order_details.data[-1].status
-            trade.exit_order_id = order_id
+
             match trade.trade_type:
                 case TransactionType.SELL.value:
                     trade.profit_loss = trade.exit_price - trade.entry_price
@@ -241,12 +244,13 @@ class Client:
                     trade.profit_loss = trade.entry_price - trade.exit_price
             trade.LTP = self.get_ltp(trade.symbol)
             trade.entry_status = TradeStatus.EXECUTED.value
-            trade.status = TradeStatus.CLOSING.value
+
 
             # Update the changes in the database
             self.session.commit()
         except ApiException as e:
             print("Exception when calling OrderApi->place_order: %s\n" % e)
+            self.session.commit()
 
     def get_trades(self) :
         '''Return the Trades table for that client'''
