@@ -1,6 +1,4 @@
-from html5lib.treewalkers import pprint
 from time import sleep
-import yfinance as yf
 import dateutil
 import pandas as pd
 import pandas_ta as ta
@@ -156,7 +154,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
 
     client = active_clients[0]
     if profit1[0] > 0 and profit1[1] > 0:
-        if profit1[5] != 1:
+        if profit1[5] != 1 and profit1[4] == trend:
         # sti = ta.supertrend(data['High'], data['Low'], data['Close'], 10, 1)
         # if sti['SUPERTd_10_1.0'].iloc[-1] == sti['SUPERTd_10_1.0'].iloc[-2] and sti['SUPERTd_10_1.0'].iloc[-1] == client.get_flags().future:
             print('Trend is same as before for 1.0 and SL is', profit1[6], profit1[4])
@@ -170,7 +168,15 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
         #     print('Trend is -1 as per 1.0')
         #     return -1
     elif (profit1[0] > 0 or profit1[1] > 0) and profit2[4] == profit3[4] == profit4[4]:
-        if profit1[5] != 1:
+        if profit1[5] != 1 and profit1[4] == trend:
+            print('Trend is same as before for 1.0 and SL is', profit1[6], profit1[5])
+            return profit1[6]
+        else:
+            trend = profit1[4]
+            print(f'Trend is {profit1[4]} as per 1.0')
+            return profit1[4]
+    elif profit1[0] < 0 and profit1[4] == profit3[4] == profit4[4]:
+        if profit1[5] != 1 and profit1[4] == trend:
             print('Trend is same as before for 1.0 and SL is', profit1[6], profit1[5])
             return profit1[6]
         else:
@@ -178,7 +184,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
             print(f'Trend is {profit1[4]} as per 1.0')
             return profit1[4]
     elif profit1[0] < 0 and profit1[4] != profit2[4]:
-        if profit2[5] != 1:
+        if profit2[5] != 1 and profit2[4] == trend:
             print('Trend is same as before for 2.0 and SL is', profit2[6], profit2[5])
             return profit2[6]
         else:
@@ -186,7 +192,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
             print(f'Trend is {profit2[4]} as per 2.0')
             return profit2[4]
     elif profit2[0] > 0 and profit2[1] > 0:
-        if profit1[5] != 1:
+        if profit2[5] != 1 and profit2[4] == trend:
             print('Trend is same as before for 2.0 and SL is', profit2[6], profit2[5])
             return profit2[6]
         else:
@@ -206,7 +212,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
         #     print('Trend is -1 as per 2.0')
         #     return -1
     elif (profit2[0] > 0 or profit2[1] > 0) and profit3[4] == profit4[4]:
-        if profit2[5] != 1:
+        if profit2[5] != 1 and profit2[4] == trend:
             print('Trend is same as before for 2.0 and SL is', profit2[6], profit2[5])
             return profit2[6]
         else:
@@ -214,15 +220,15 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
             print(f'Trend is {profit2[4]} as per 1.0')
             return profit2[4]
     elif profit2[0] < 0 and profit2[4] != profit3[4]:
-        if profit3[5] != 1:
+        if profit3[5] != 1 and profit3[4] == trend:
             print('Trend is same as before for 3.0 and SL is', profit3[6], profit3[5])
             return profit3[6]
         else:
             trend = profit3[4]
-            print(f'Trend is {profit3[4]} as per 2.0')
+            print(f'Trend is {profit3[4]} as per 3.0')
             return profit3[4]
     elif profit3[0] > 0 and profit3[1] > 0:
-        if profit3[5] != 1:
+        if profit3[5] != 1 and profit2[4] == trend:
             print('Trend is same as before for 3.0 and SL is', profit3[6], profit3[5])
             return profit3[6]
         else:
@@ -242,7 +248,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
         #     print('Trend is -1 as per 3.0')
         #     return -1
     elif profit3[0] < 0 and profit3[4] != profit4[4]:
-        if profit4[5] != 1:
+        if profit4[5] != 1 and profit4[4] == trend:
             print('Trend is same as before for 4.0 and SL is', profit4[6], profit4[5])
             return profit4[6]
         else:
@@ -250,7 +256,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
             print(f'Trend is {profit4[4]} as per 4.0')
             return profit4[4]
     elif profit4[0] > 0 and profit4[1] > 0:
-        if profit4[5] != 1:
+        if profit4[5] != 1 and profit4[4] == trend:
             print('Trend is same as before for 4.0 and SL is ', profit4[6], profit4[5])
             return profit4[6]
         else:
@@ -270,7 +276,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
         #     print('Trend is -1 as per 4.0')
         #     return -1
     elif profit1[0] > 0 or profit1[1] > 0:
-        if profit1[5] != 1:
+        if profit1[5] != 1 and profit1[4] == trend:
             print('Trend is same as before for 1.0 and SL is ', profit1[6], profit1[5])
             return profit1[6]
         else:
@@ -290,7 +296,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
         #     print('Trend is -1 as per 1.0 with any one profit')
         #     return -1
     elif profit2[0] > 0 or profit2[1] > 0:
-        if profit2[5] != 1:
+        if profit2[5] != 1 and profit2[4] == trend:
             print('Trend is same as before for 2.0 and SL is ', profit2[6], profit2[5])
             return profit2[6]
         else:
@@ -310,7 +316,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
         #     print('Trend is -1 as per 2.0 with any one profit')
         #     return -1
     elif profit3[0] > 0 or profit3[1] > 0:
-        if profit3[5] != 1:
+        if profit3[5] != 1 and profit3[4] == trend:
             print('Trend is same as before for 3.0 and SL is ', profit3[6], profit3[5])
             return profit3[6]
         else:
@@ -698,14 +704,23 @@ def close_future_hedge():
                         ).first()
 
                         close_trade_type = TransactionType.BUY
-
-                        order = client.place_order(
-                            quantity=trade_to_exit.quantity,
-                            price=0,
-                            tradingsymbol=trade_to_exit.symbol,
-                            order_type=OrderType.MARKET,
-                            transaction_type=close_trade_type
-                        )
+                        try:
+                            order = client.place_order(
+                                quantity=trade_to_exit.quantity,
+                                price=0,
+                                tradingsymbol=trade_to_exit.symbol,
+                                order_type=OrderType.MARKET,
+                                transaction_type=close_trade_type
+                            )
+                        except ApiException:
+                            print('guessing the missing qty')
+                            order = client.place_order(
+                                quantity=client.strategy.fixed_profit,
+                                price=0,
+                                tradingsymbol=trade_to_exit.symbol,
+                                order_type=OrderType.MARKET,
+                                transaction_type=close_trade_type
+                            )
                         order_id = order['data']['order_id']  # Extract the order_id
                         try:
                             order_details = client.order_api.get_order_details(
@@ -733,14 +748,23 @@ def close_future_hedge():
                                 close_trade_type = TransactionType.SELL
                             else:
                                 close_trade_type = TransactionType.BUY
-
-                            order = client.place_order(
-                                quantity=trade_to_exit.quantity,
-                                price=0,
-                                tradingsymbol=trade_to_exit.symbol,
-                                order_type=OrderType.MARKET,
-                                transaction_type=close_trade_type
-                            )
+                            try:
+                                order = client.place_order(
+                                    quantity=trade_to_exit.quantity,
+                                    price=0,
+                                    tradingsymbol=trade_to_exit.symbol,
+                                    order_type=OrderType.MARKET,
+                                    transaction_type=close_trade_type
+                                )
+                            except ApiException:
+                                print('guessing the missing qty')
+                                order = client.place_order(
+                                    quantity=client.strategy.fixed_profit,
+                                    price=0,
+                                    tradingsymbol=trade_to_exit.symbol,
+                                    order_type=OrderType.MARKET,
+                                    transaction_type=close_trade_type
+                                )
                             order_id = order['data']['order_id']  # Extract the order_id
                             try:
                                 order_details = client.order_api.get_order_details(
@@ -953,7 +977,7 @@ def weeks():
         fromtime2 = datetime(YY2, MM2, int(DD2), 15, 30)
         print('Week2 Bank is', week2b)
     else:
-        week2b = 'BANKNIFTY' + str(YY2) + str(MM2.upper())
+        week2b = 'BANKNIFTY' + str(YY2) + str(MM2).upper()
         fromtime2 = datetime(YY2, MM2, int(DD2), 15, 30)
         print('Week2 Bank is', week2b)
     if wednesday == 7 or (wednesday == 1 and shortweek == 1):
@@ -1867,6 +1891,10 @@ def update() -> None:
                     current_trade.status = TradeStatus.CLOSED.value
                     current_trade.entry_status = TradeStatus.COMPLETE.value
                     current_trade.exit_price = order_details.data[-1].average_price
+                    if current_trade.trade_type == 'BUY':
+                        current_trade.profit_loss = round((current_trade.exit_price - current_trade.entry_price), 2) * current_trade.quantity
+                    else:
+                        current_trade.profit_loss = round((current_trade.entry_price - current_trade.exit_price), 2) * current_trade.quantity
                 elif current_trade.exit_status == TradeStatus.REJECTED.value:
                     current_trade.status = 'Manually Close'
                 session.commit()
@@ -1884,7 +1912,7 @@ def update() -> None:
                 if current_trade.exit_status == TradeStatus.COMPLETE.value:
                     current_trade.status = TradeStatus.CLOSED.value
                     # current_trade.entry_status = TradeStatus.COMPLETE.value
-                    if current_trade.trade_type == TransactionType.BUY.value:
+                    if current_trade.trade_type == TransactionType.SELL.value:
                         current_trade.profit_loss = round(current_trade.entry_price - current_trade.exit_price, 2) * current_trade.quantity
                     else:
                         current_trade.profit_loss = round(current_trade.exit_price - current_trade.entry_price, 2) * current_trade.quantity
@@ -1909,6 +1937,12 @@ def update() -> None:
                     else:
                         current_trade.exit_status = TradeStatus.COMPLETE.value
                         current_trade.status = TradeStatus.CLOSED.value
+                        if current_trade.trade_type == TransactionType.SELL.value:
+                            current_trade.profit_loss = round(current_trade.entry_price - current_trade.exit_price,
+                                                              2) * current_trade.quantity
+                        else:
+                            current_trade.profit_loss = round(current_trade.exit_price - current_trade.entry_price,
+                                                              2) * current_trade.quantity
                 session.commit()
             if current_trade.trade_type == TransactionType.SELL.value and current_trade.status == TradeStatus.LIVE.value:
 
@@ -1920,14 +1954,17 @@ def update() -> None:
             api_instance = upstox_client.UserApi(client.api_client)
             used_margin = api_instance.get_user_fund_margin(API_VERSION).data['equity'].used_margin
             available_margin = api_instance.get_user_fund_margin(API_VERSION).data['equity'].available_margin
-
             row = session.query(Clients).filter_by(client_id=client.client_id).first()
+            total_sum = 0
+            for record in upstox_client.PortfolioApi(client.api_client).get_positions(API_VERSION).data:
+                total_sum += record.unrealised
+            row.m_to_m = total_sum
             row.used = used_margin
             row.available = available_margin
             if available_margin < 60000:
                 print(f'Low margin in {client.client_id}, Rs. {available_margin}')
         except ApiException as e:
-            print("Exception when calling UserApi->get_user_fund_margin: %s\n" % e)
+            print("Exception when calling UserApi->get_user_fund_margin or portfolio: %s\n" % e)
         session.commit()
         # api_instance = upstox_client.PortfolioApi(client.api_client)
         # for trade in api_instance.get_positions(API_VERSION).data:

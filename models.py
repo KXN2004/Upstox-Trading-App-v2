@@ -215,11 +215,10 @@ class Client:
 
     def close_trade(self, trade) -> None:
         """Close the trade which was passed as an argument"""
-        match trade.trade_type:
-            case TransactionType.SELL.value:
-                trade_type = TransactionType.BUY
-            case TransactionType.BUY.value:
-                trade_type = TransactionType.SELL
+        if trade.trade_type == TransactionType.SELL.value:
+            trade_type = TransactionType.BUY
+        else:
+            trade_type = TransactionType.SELL
         trade.status = TradeStatus.CLOSING.value
         self.session.commit()
         try:
@@ -237,11 +236,10 @@ class Client:
             trade.exit_price = order_details.data[-1].average_price
             trade.exit_status = order_details.data[-1].status
 
-            match trade.trade_type:
-                case TransactionType.SELL.value:
-                    trade.profit_loss = trade.exit_price - trade.entry_price
-                case TransactionType.BUY.value:
-                    trade.profit_loss = trade.entry_price - trade.exit_price
+            if trade.trade_type == TransactionType.SELL.value:
+                trade.profit_loss = trade.exit_price - trade.entry_price
+            else:
+                trade.profit_loss = trade.entry_price - trade.exit_price
             trade.LTP = self.get_ltp(trade.symbol)
             trade.entry_status = TradeStatus.EXECUTED.value
 
