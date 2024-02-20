@@ -118,17 +118,31 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
         print("Exception when calling HistoryApi->get_historical_candle_data: %s\n" % e)
 
     def something(multiplier: int):
+        global profit1, profit2, profit3, profit4, profit5
         sti = ta.supertrend(data['High'], data['Low'], data['Close'], 10, multiplier)
         count = -1
-        profit = [0, 0, 0, 0, 0, 0, 0, 0]
+        profit = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+        # 0th = last trend profit
+        # 1st = Previous to last trend profit
+        # 2nd = Current trend - 3 profit
+        # 3rd = Current trend - 4 profit
+        # 4th = Current trend direction
+        # 5th = no. of candles in current trend
+        # 6th = SL of the current trend
+        # 7th = no. of candles in last 4 cycle + current trend
+        # 8th = profit points of current trend
         profit[4] = sti[f'SUPERTd_10_{multiplier}.0'].iloc[-1]
         profit[6] = round(sti[f'SUPERT_10_{multiplier}.0'].iloc[-1], 2)
         close_value = last_value = data['Close'].iloc[-1]
-        for j in range(1, 300):
+        for j in range(1, 400):
             if sti[f'SUPERTd_10_{multiplier}.0'].iloc[-j] != sti[f'SUPERTd_10_{multiplier}.0'].iloc[-j - 1]:
                 if count == -1:
                     last_value = data['Close'].iloc[-j]
                     profit[5] = j
+                    if profit[4] == 1:
+                        profit[8] = close_value - last_value
+                    else:
+                        profit[8] = last_value - close_value
                     count += 1
                     continue
                 if sti[f'SUPERTd_10_{multiplier}.0'].iloc[-j-1] == 1:
@@ -148,13 +162,108 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
     profit2 = something(2)
     profit3 = something(3)
     profit4 = something(4)
+    profit5 = something(5)
+    print('Analysis', datetime.now().time())
     print(profit1)
     print(profit2)
     print(profit3)
     print(profit4)
+    print(profit5)
 
     client = active_clients[0]
-    if profit1[0] > 10 and profit1[1] > 10:
+    if profit5[8] > 10:
+        if profit5[4] == 1:
+            if profit4[8] > 10:
+                if profit4[4] == 1:
+                    if profit3[8] > 10:
+                        if profit3[4] == 1:
+                            micro_trend()
+                        else:
+                            print('Trend is not defined in 3.0')
+                    else:
+                        print('Trend is not defined in 3.0')
+                else:
+                    if profit3[8] > 10:
+                        if profit3[4] == 1:
+                            print('Trend is not defined in 3.0')
+                        else:
+                            micro_trend()
+                    else:
+                        print('Trend is not defined in 3.0')
+            else:
+                if profit4[4] == 1:
+                    if profit3[8] > 10:
+                        if profit3[4] == 1:
+                            micro_trend()
+                        else:
+                            print('Trend is not defined in 3.0')
+                    else:
+                        print('Trend is not defined in 3.0')
+                else:
+                    if profit3[8] > 10:
+                        if profit3[4] == 1:
+                            print('Trend is not defined in 3.0')
+                        else:
+                            micro_trend()
+                    else:
+                        print('Trend is not defined in 3.0')
+        else:
+            if profit4[8] > 10:
+                if profit4[4] == 1:
+                    if profit3[8] > 10:
+                        if profit3[4] == 1:
+                            micro_trend()
+                        else:
+                            print('Trend is not defined in 3.0')
+                    else:
+                        print('Trend is not defined in 3.0')
+                else:
+                    micro_trend()
+            else:
+                if profit4[4] == 1:
+                    if profit3[8] > 10:
+                        if profit3[4] == 1:
+                            micro_trend()
+                        else:
+                            print('Trend is not defined in 3.0')
+                    else:
+                        print('Trend is not defined in 3.0')
+                else:
+                    if profit3[8] > 10:
+                        if profit3[4] == 1:
+                            print('Trend is not defined in 3.0')
+                        else:
+                            micro_trend()
+    elif profit4[8] > 10:
+        if profit4[4] == 1:
+            if profit3[8] > 10:
+                if profit3[4] == 1:
+                    micro_trend()
+                else:
+                    print('Trend is not defined in 3.0')
+            else:
+                if profit3[4] == 1:
+                    micro_trend()
+                else:
+                    print('Trend is not defined in 3.0')
+        else:
+            if profit3[8] > 10:
+                if profit3[4] == 1:
+                    print('Trend is not defined in 3.0')
+                else:
+                    micro_trend()
+            else:
+                if profit3[4] == 1:
+                    print('Trend is not defined in 3.0')
+                else:
+                    micro_trend(profit1, profit2, profit3, profit4, profit5)
+    elif profit3[8] > 10:
+        micro_trend(profit1, profit2, profit3, profit4, profit5)
+    else:
+        print('Trend is not defined in any case')
+
+def micro_trend(profit1, profit2, profit3, profit4, profit5):
+    if profit1[0] > 20 and profit1[1] > 10:
         if profit1[5] != 1 and profit1[4] == trend:
             print('Trend is same as before for 1.0 and SL is', profit1[6], profit1[4])
             return profit1[6]
@@ -162,7 +271,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
             trend = profit1[4]
             print(f'Trend is {profit1[4]} as per 1.0')
             return profit1[4]
-    elif (profit1[0] > 10 or profit1[1] > 10) and profit2[4] == profit3[4] == profit4[4] and profit1[7] > 25:
+    elif (profit1[0] > 20 or profit1[1] > 10) and profit2[4] == profit3[4] == profit4[4] and profit1[7] > 35:
         if profit1[5] != 1 and profit1[4] == trend:
             print('Trend is same as before for 1.0 and SL is', profit1[6], profit1[5])
             return profit1[6]
@@ -170,7 +279,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
             trend = profit1[4]
             print(f'Trend is {profit1[4]} as per 1.0')
             return profit1[4]
-    elif profit1[0] < 10 and profit1[4] == profit3[4] == profit4[4] and profit[7] > 25:
+    elif profit1[0] < 10 and profit1[4] == profit3[4] == profit4[4] and profit1[7] > 45:
         if profit1[5] != 1 and profit1[4] == trend:
             print('Trend is same as before for 1.0 and SL is', profit1[6], profit1[5])
             return profit1[6]
@@ -234,18 +343,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
             trend = profit4[4]
             print(f'Trend is {profit4[4]} as per 4.0')
             return profit4[4]
-        # sti = ta.supertrend(data['High'], data['Low'], data['Close'], 10, 4)
-        # if sti['SUPERTd_10_4.0'].iloc[-1] == sti['SUPERTd_10_4.0'].iloc[-2] and sti['SUPERTd_10_4.0'].iloc[-1] == client.get_flags().future:
-        #     print('Trend is same as before for 4.0')
-        #     return sti['SUPERT_10_4.0'].iloc[-1]
-        # elif sti['SUPERTd_10_4.0'].iloc[-1] == 1:
-        #     trend = 1
-        #     print('Trend is 1 as per 4.0')
-        #     return 1
-        # elif sti['SUPERTd_10_4.0'].iloc[-1] == -1:
-        #     trend = -1
-        #     print('Trend is -1 as per 4.0')
-        #     return -1
+
     elif profit1[0] > 10 or profit1[1] > 10:
         if profit1[5] != 1 and profit1[4] == trend:
             print('Trend is same as before for 1.0 and SL is ', profit1[6], profit1[5])
@@ -254,18 +352,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
             trend = profit1[4]
             print(f'Trend is {profit1[4]} as per 1.0 with any one profit')
             return profit1[4]
-        # sti = ta.supertrend(data['High'], data['Low'], data['Close'], 10, 1)
-        # if sti['SUPERTd_10_1.0'].iloc[-1] == sti['SUPERTd_10_1.0'].iloc[-2]:
-        #     print('Going with Trend 1.0 and is same as before')
-        #     return sti['SUPERT_10_1.0'].iloc[-1]
-        # elif sti['SUPERTd_10_1.0'].iloc[-1] == 1:
-        #     trend = 1
-        #     print('Trend is 1 as per 1.0 with any one profit')
-        #     return 1
-        # elif sti['SUPERTd_10_1.0'].iloc[-1] == -1:
-        #     trend = -1
-        #     print('Trend is -1 as per 1.0 with any one profit')
-        #     return -1
+
     elif profit2[0] > 10 or profit2[1] > 10:
         if profit2[5] != 1 and profit2[4] == trend:
             print('Trend is same as before for 2.0 and SL is ', profit2[6], profit2[5])
@@ -274,18 +361,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
             trend = profit2[4]
             print(f'Trend is {profit2[4]} as per 2.0 with any one profit')
             return profit2[4]
-        # sti = ta.supertrend(data['High'], data['Low'], data['Close'], 10, 2)
-        # if sti['SUPERTd_10_2.0'].iloc[-1] == sti['SUPERTd_10_2.0'].iloc[-2]:
-        #     print('Going with Trend 2.0 and is same as before')
-        #     return sti['SUPERT_10_2.0'].iloc[-1]
-        # elif sti['SUPERTd_10_2.0'].iloc[-1] == 1:
-        #     trend = 1
-        #     print('Trend is 1 as per 2.0 with any one profit')
-        #     return 1
-        # elif sti['SUPERTd_10_2.0'].iloc[-1] == -1:
-        #     trend = -1
-        #     print('Trend is -1 as per 2.0 with any one profit')
-        #     return -1
+
     elif profit3[0] > 10 or profit3[1] > 10:
         if profit3[5] != 1 and profit3[4] == trend:
             print('Trend is same as before for 3.0 and SL is ', profit3[6], profit3[5])
@@ -294,44 +370,10 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
             trend = profit3[4]
             print(f'Trend is {profit3[4]} as per 3.0 with any one profit')
             return profit3[4]
-        # sti = ta.supertrend(data['High'], data['Low'], data['Close'], 10, 3)
-        # if sti['SUPERTd_10_3.0'].iloc[-1] == sti['SUPERTd_10_3.0'].iloc[-2]:
-        #     print('Going with Trend 3.0 and is same as before')
-        #     return sti['SUPERT_10_3.0'].iloc[-1]
-        # elif sti['SUPERTd_10_3.0'].iloc[-1] == 1:
-        #     trend = 1
-        #     print('Trend is 1 as per 3.0 with any one profit')
-        #     return 1
-        # elif sti['SUPERTd_10_3.0'].iloc[-1] == -1:
-        #     trend = -1
-        #     print('Trend is -1 as per 3.0 with any one profit')
-        #     return -1
+
     else:
         print('Trend is not defined for any multiplier')
         return 0
-
-    # trend = sti4['SUPERTd_10_4.0'].iloc[-1]
-    # print(sti4[['SUPERT_10_4.0', 'SUPERTd_10_4.0']].tail())
-    # print('New Trend is', trend)
-    # print('-1 is ', sti4['SUPERTd_10_4.0'].iloc[-1], sti4['SUPERT_10_4.0'].iloc[-1])
-    # print('-2 is ', sti4['SUPERTd_10_4.0'].iloc[-2], sti4['SUPERT_10_4.0'].iloc[-2])
-    # print('-3 is ', sti4['SUPERTd_10_4.0'].iloc[-3], sti4['SUPERT_10_4.0'].iloc[-3])
-    # if sti4['SUPERT_10_4.0'].iloc[-1] > data['Close'].iloc[-1] and sti4['SUPERT_10_4.0'].iloc[-2] < data['Close'].iloc[-2]:
-    #     print('Trend changed to -1')
-    #     return -1
-    # elif sti4['SUPERT_10_4.0'].iloc[-1] < data['Close'].iloc[-1] and sti4['SUPERT_10_4.0'].iloc[-2] > data['Close'].iloc[-2]:
-    #     print('Trend changed to 1')
-    #     return 1
-    # elif sti4['SUPERT_10_4.0'].iloc[-2] > data['Close'].iloc[-2] and sti4['SUPERT_10_4.0'].iloc[-3] < data['Close'].iloc[-3]:
-    #     print('Trend changed to -1')
-    #     return -1
-    # elif sti4['SUPERT_10_4.0'].iloc[-2] < data['Close'].iloc[-2] and sti4['SUPERT_10_4.0'].iloc[-3] > data['Close'].iloc[-3]:
-    #     print('Trend changed to 1')
-    #     return 1
-
-    # else:
-    #     print('Trend is same as before')
-    #     return sti4['SUPERT_10_4.0'].iloc[-1]
 
 
 def close_future_hedge():
