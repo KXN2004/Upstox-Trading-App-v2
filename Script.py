@@ -140,9 +140,9 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
                     last_value = data['Close'].iloc[-j]
                     profit[5] = j
                     if profit[4] == 1:
-                        profit[8] = close_value - last_value
+                        profit[8] = round(close_value - last_value, 2)
                     else:
-                        profit[8] = last_value - close_value
+                        profit[8] = round(last_value - close_value, 2)
                     count += 1
                     continue
                 if sti[f'SUPERTd_10_{multiplier}.0'].iloc[-j-1] == 1:
@@ -176,104 +176,125 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
             if profit4[8] > 10:
                 if profit4[4] == 1:
                     if profit3[8] > 10:
-                        if profit3[4] == 1:
-                            micro_trend()
-                        else:
-                            print('Trend is not defined in 3.0')
+                        return micro_trend(profit1, profit2, profit3, profit4, profit5)
                     else:
                         print('Trend is not defined in 3.0')
+                        print('+5^, +4^, -3')
                 else:
                     if profit3[8] > 10:
                         if profit3[4] == 1:
                             print('Trend is not defined in 3.0')
+                            print('+5^, +4v, +3^')
                         else:
-                            micro_trend()
+                            return micro_trend(profit1, profit2, profit3, profit4, profit5)
                     else:
-                        print('Trend is not defined in 3.0')
+                        if profit3[4] == 1:
+                            print('Trend is not defined in 3.0')
+                            print('+5^, -4v, -3^')
+                        else:
+                            return micro_trend(profit1, profit2, profit3, profit4, profit5)
+
             else:
                 if profit4[4] == 1:
                     if profit3[8] > 10:
                         if profit3[4] == 1:
-                            micro_trend()
+                            return micro_trend(profit1, profit2, profit3, profit4, profit5)
                         else:
                             print('Trend is not defined in 3.0')
+                            print('+5^, -4^, +3v')
                     else:
                         print('Trend is not defined in 3.0')
+                        print('+5^, -4^, -3')
                 else:
                     if profit3[8] > 10:
                         if profit3[4] == 1:
-                            print('Trend is not defined in 3.0')
+                            return micro_trend(profit1, profit2, profit3, profit4, profit5)
                         else:
-                            micro_trend()
+                            print('Trend is not defined in 3.0')
+                            print('+5^, -4v, +3v')
                     else:
                         print('Trend is not defined in 3.0')
+                        print('+5^, -4v, -3')
         else:
             if profit4[8] > 10:
                 if profit4[4] == 1:
                     if profit3[8] > 10:
                         if profit3[4] == 1:
-                            micro_trend()
+                            return micro_trend(profit1, profit2, profit3, profit4, profit5)
                         else:
                             print('Trend is not defined in 3.0')
+                            print('+5v, +4^, +3v')
                     else:
                         print('Trend is not defined in 3.0')
+                        print('+5v, +4^, -3')
                 else:
-                    micro_trend()
+                    return micro_trend(profit1, profit2, profit3, profit4, profit5)
             else:
                 if profit4[4] == 1:
                     if profit3[8] > 10:
                         if profit3[4] == 1:
-                            micro_trend()
-                        else:
                             print('Trend is not defined in 3.0')
+                            print('+5v, -4^, +3^')
+                        else:
+                            return micro_trend(profit1, profit2, profit3, profit4, profit5)
                     else:
-                        print('Trend is not defined in 3.0')
+                        if profit3[4] == 1:
+                            print('Trend is not defined in 3.0')
+                            print('+5v, -4^, -3^')
+                        else:
+                            return micro_trend(profit1, profit2, profit3, profit4, profit5)
                 else:
                     if profit3[8] > 10:
                         if profit3[4] == 1:
                             print('Trend is not defined in 3.0')
+                            print('+5v, -4v, +3^')
                         else:
-                            micro_trend()
+                            return micro_trend(profit1, profit2, profit3, profit4, profit5)
     elif profit4[8] > 10:
         if profit4[4] == 1:
             if profit3[8] > 10:
                 if profit3[4] == 1:
-                    micro_trend()
+                    return micro_trend(profit1, profit2, profit3, profit4, profit5)
                 else:
                     print('Trend is not defined in 3.0')
+                    print('-5, +4^, +3v')
             else:
                 if profit3[4] == 1:
-                    micro_trend()
+                    return micro_trend(profit1, profit2, profit3, profit4, profit5)
                 else:
                     print('Trend is not defined in 3.0')
+                    print('-5, +4^, -3v')
         else:
             if profit3[8] > 10:
                 if profit3[4] == 1:
                     print('Trend is not defined in 3.0')
+                    print('-5, +4v, +3^')
                 else:
-                    micro_trend()
+                    return micro_trend(profit1, profit2, profit3, profit4, profit5)
             else:
                 if profit3[4] == 1:
                     print('Trend is not defined in 3.0')
+                    print('-5, +4v, -3^')
                 else:
-                    micro_trend(profit1, profit2, profit3, profit4, profit5)
+                    return micro_trend(profit1, profit2, profit3, profit4, profit5)
     elif profit3[8] > 10:
-        micro_trend(profit1, profit2, profit3, profit4, profit5)
+        return micro_trend(profit1, profit2, profit3, profit4, profit5)
     else:
         print('Trend is not defined in any case')
 
 def micro_trend(profit1, profit2, profit3, profit4, profit5):
+    global trend
     if profit1[0] > 20 and profit1[1] > 10:
         if profit1[5] != 1 and profit1[4] == trend:
-            print('Trend is same as before for 1.0 and SL is', profit1[6], profit1[4])
+            print(f'Trend is same as before {trend} for 1.0 and SL is', profit1[6], profit1[4])
             return profit1[6]
         else:
             trend = profit1[4]
             print(f'Trend is {profit1[4]} as per 1.0')
             return profit1[4]
-    elif (profit1[0] > 20 or profit1[1] > 10) and profit2[4] == profit3[4] == profit4[4] and profit1[7] > 35:
+    elif (profit1[0] > 20 or profit1[1] > 10) and profit1[4] == profit3[4] and profit1[7] > 40:
         if profit1[5] != 1 and profit1[4] == trend:
-            print('Trend is same as before for 1.0 and SL is', profit1[6], profit1[5])
+            print(f'Trend is same as before {trend} for 1.0 and SL is', profit1[6], profit1[5])
             return profit1[6]
         else:
             trend = profit1[4]
@@ -281,7 +302,7 @@ def micro_trend(profit1, profit2, profit3, profit4, profit5):
             return profit1[4]
     elif profit1[0] < 10 and profit1[4] == profit3[4] == profit4[4] and profit1[7] > 45:
         if profit1[5] != 1 and profit1[4] == trend:
-            print('Trend is same as before for 1.0 and SL is', profit1[6], profit1[5])
+            print(f'Trend is same as before {trend} for 1.0 and SL is', profit1[6], profit1[5])
             return profit1[6]
         else:
             trend = profit1[4]
@@ -289,7 +310,7 @@ def micro_trend(profit1, profit2, profit3, profit4, profit5):
             return profit1[4]
     elif profit1[0] < 0 and profit1[4] != profit2[4]:
         if profit2[5] != 1 and profit2[4] == trend:
-            print('Trend is same as before for 2.0 and SL is', profit2[6], profit2[5])
+            print(f'Trend is same as before {trend} for 2.0 and SL is', profit2[6], profit2[5])
             return profit2[6]
         else:
             trend = profit2[4]
@@ -297,7 +318,7 @@ def micro_trend(profit1, profit2, profit3, profit4, profit5):
             return profit2[4]
     elif profit2[0] > 10 and profit2[1] > 10:
         if profit2[5] != 1 and profit2[4] == trend:
-            print('Trend is same as before for 2.0 and SL is', profit2[6], profit2[5])
+            print(f'Trend is same as before {trend} for 2.0 and SL is', profit2[6], profit2[5])
             return profit2[6]
         else:
             trend = profit2[4]
@@ -305,7 +326,7 @@ def micro_trend(profit1, profit2, profit3, profit4, profit5):
             return profit2[4]
     elif (profit2[0] > 10 or profit2[1] > 10) and profit3[4] == profit4[4]:
         if profit2[5] != 1 and profit2[4] == trend:
-            print('Trend is same as before for 2.0 and SL is', profit2[6], profit2[5])
+            print(f'Trend is same as before {trend} for 2.0 and SL is', profit2[6], profit2[5])
             return profit2[6]
         else:
             trend = profit2[4]
@@ -313,7 +334,7 @@ def micro_trend(profit1, profit2, profit3, profit4, profit5):
             return profit2[4]
     elif profit2[0] < 10 and profit2[4] != profit3[4]:
         if profit3[5] != 1 and profit3[4] == trend:
-            print('Trend is same as before for 3.0 and SL is', profit3[6], profit3[5])
+            print(f'Trend is same as before {trend} for 3.0 and SL is', profit3[6], profit3[5])
             return profit3[6]
         else:
             trend = profit3[4]
@@ -321,7 +342,7 @@ def micro_trend(profit1, profit2, profit3, profit4, profit5):
             return profit3[4]
     elif profit3[0] > 10 and profit3[1] > 10:
         if profit3[5] != 1 and profit2[4] == trend:
-            print('Trend is same as before for 3.0 and SL is', profit3[6], profit3[5])
+            print(f'Trend is same as before {trend} for 3.0 and SL is', profit3[6], profit3[5])
             return profit3[6]
         else:
             trend = profit3[4]
@@ -329,7 +350,7 @@ def micro_trend(profit1, profit2, profit3, profit4, profit5):
             return profit3[4]
     elif profit3[0] < 10 and profit3[4] != profit4[4]:
         if profit4[5] != 1 and profit4[4] == trend:
-            print('Trend is same as before for 4.0 and SL is', profit4[6], profit4[5])
+            print(f'Trend is same as before {trend} for 4.0 and SL is', profit4[6], profit4[5])
             return profit4[6]
         else:
             trend = profit4[4]
@@ -337,7 +358,7 @@ def micro_trend(profit1, profit2, profit3, profit4, profit5):
             return profit4[4]
     elif profit4[0] > 10 and profit4[1] > 10:
         if profit4[5] != 1 and profit4[4] == trend:
-            print('Trend is same as before for 4.0 and SL is ', profit4[6], profit4[5])
+            print(f'Trend is same as before {trend} for 4.0 and SL is ', profit4[6], profit4[5])
             return profit4[6]
         else:
             trend = profit4[4]
@@ -346,7 +367,7 @@ def micro_trend(profit1, profit2, profit3, profit4, profit5):
 
     elif profit1[0] > 10 or profit1[1] > 10:
         if profit1[5] != 1 and profit1[4] == trend:
-            print('Trend is same as before for 1.0 and SL is ', profit1[6], profit1[5])
+            print(f'Trend is same as before {trend} for 1.0 and SL is ', profit1[6], profit1[5])
             return profit1[6]
         else:
             trend = profit1[4]
@@ -355,7 +376,7 @@ def micro_trend(profit1, profit2, profit3, profit4, profit5):
 
     elif profit2[0] > 10 or profit2[1] > 10:
         if profit2[5] != 1 and profit2[4] == trend:
-            print('Trend is same as before for 2.0 and SL is ', profit2[6], profit2[5])
+            print(f'Trend is same as before {trend} for 2.0 and SL is ', profit2[6], profit2[5])
             return profit2[6]
         else:
             trend = profit2[4]
@@ -364,7 +385,7 @@ def micro_trend(profit1, profit2, profit3, profit4, profit5):
 
     elif profit3[0] > 10 or profit3[1] > 10:
         if profit3[5] != 1 and profit3[4] == trend:
-            print('Trend is same as before for 3.0 and SL is ', profit3[6], profit3[5])
+            print(f'Trend is same as before {trend} for 3.0 and SL is ', profit3[6], profit3[5])
             return profit3[6]
         else:
             trend = profit3[4]
@@ -381,7 +402,7 @@ def close_future_hedge():
     print(super_trend)
     for client in active_clients:
         if client.strategy.futures > 0:
-            print('Checking for future hedge for closing')
+            print('Checking for future hedge for closing', client)
             if super_trend == -1 or super_trend == 1:
                 # checking for calls
                 try:
@@ -427,7 +448,7 @@ def close_future_hedge():
                 if call_ltp == 0 or put_ltp == 0:
                     print('Not doing anything since 0')
                     continue
-                elif call_ltp > 65 and put_ltp > 65:
+                elif call_ltp > 70 and put_ltp > 70:
                     if super_trend == -1:
                         if client.get_flags().future == 1.:
                             print('Selling future double')
@@ -559,7 +580,7 @@ def close_future_hedge():
                         trade_to_exit.status = TradeStatus.CLOSING.value
                         # save the changes to the database
                         session.commit()
-                elif call_ltp > 65 > put_ltp:
+                elif call_ltp > 70 > put_ltp:
                     if super_trend == -1.:
                         if client.get_flags().future == 1:
                             qty: int = client.strategy.futures * 15
@@ -649,7 +670,7 @@ def close_future_hedge():
 
                         # save the changes to the database
                         session.commit()
-                elif call_ltp < 65 < put_ltp:
+                elif call_ltp < 70 < put_ltp:
                     if super_trend == -1.:
                         if client.get_flags().future == 1:
                             print('Selling future double')
@@ -746,7 +767,7 @@ def close_future_hedge():
                         trade_to_exit.status = TradeStatus.CLOSING.value
                         # save the changes to the database
                         session.commit()
-                elif call_ltp < 65 and put_ltp < 65:
+                elif call_ltp < 70 and put_ltp < 70:
                     if super_trend == -1.:
                         if client.get_flags().future == 1:
                             print('Selling future single')
@@ -1339,61 +1360,61 @@ def next_expiry(client, current_trade) -> None:
         next_week = week2b
         days_left = fromtime2
 
-        rank = current_trade.rank.split()[0]
-        if client.strategy.option_selling == 1:
-            client.get_flags().first_leg = 0
-        new_trade = Trades()  # Create a new trade object
-        new_trade.strategy = Strategy.FIXED_PROFIT.value
-        new_trade.trade_type = TransactionType.SELL.value
-        new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
-        new_trade.days_left = days_left
-        new_trade.date_time = datetime.now().time()
-        new_trade.exit_price = -1
-        new_trade.exit_status = NOT_APPLICABLE
-        new_trade.profit_loss = 0
+    rank = current_trade.rank.split()[0]
+    if client.strategy.option_selling == 1:
+        client.get_flags().first_leg = 0
+    new_trade = Trades()  # Create a new trade object
+    new_trade.strategy = Strategy.FIXED_PROFIT.value
+    new_trade.trade_type = TransactionType.SELL.value
+    new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
+    new_trade.days_left = days_left
+    new_trade.date_time = datetime.now().time()
+    new_trade.exit_price = -1
+    new_trade.exit_status = NOT_APPLICABLE
+    new_trade.profit_loss = 0
 
-        # Common for all clients
-        _, symbol = price_strike(next_week, 60, rank)
+    # Common for all clients
+    _, symbol = price_strike(next_week, 60, rank)
 
-        new_trade.client_id = client.client_id
-        new_trade.quantity = client.strategy.fixed_profit * 15
+    new_trade.client_id = client.client_id
+    new_trade.quantity = client.strategy.fixed_profit * 15
 
-        # Proceed if client has an open order in fixed profit strategy
-        # proceed = not client.get_trades().filter(
-        #     Trades.strategy == Strategy.FIXED_PROFIT.value,
-        #     Trades.status != TradeStatus.LIVE.value
-        # ).all()
+    # Proceed if client has an open order in fixed profit strategy
+    # proceed = not client.get_trades().filter(
+    #     Trades.strategy == Strategy.FIXED_PROFIT.value,
+    #     Trades.status != TradeStatus.LIVE.value
+    # ).all()
 
-        # If fixed profit and bank nifty flags are enabled for the client
-        if client.strategy.fixed_profit and client.strategy.bank_nifty:
+    # If fixed profit and bank nifty flags are enabled for the client
+    if client.strategy.fixed_profit and client.strategy.bank_nifty:
 
-            # For Call
-            new_trade.order_id = randint(10, 99)
-            new_trade.rank = rank +' 1'
-            parameters = client.market_quote_api.get_full_market_quote(
-                get_token(symbol), API_VERSION
-            ).to_dict()
-            new_trade.entry_price = parameters['data'][f'NSE_FO:{symbol}']['depth']['sell'][0]['price'] - 0.05
-            try:
-                order = client.place_order(
-                    quantity=new_trade.quantity,
-                    price=new_trade.entry_price,
-                    tradingsymbol=symbol,
-                    order_type=OrderType.LIMIT,
-                    transaction_type=TransactionType.SELL
-                )
-                order_id = order['data']['order_id']  # Extract the order_id
-                new_trade.order_id = order_id
-            except ApiException as e:
-                print("Exception when calling OrderApi->place_order: %s\n" % e)
+        # For Call
+        new_trade.order_id = randint(10, 99)
+        new_trade.rank = rank +' 1'
+        parameters = client.market_quote_api.get_full_market_quote(
+            get_token(symbol), API_VERSION
+        ).to_dict()
+        new_trade.entry_price = parameters['data'][f'NSE_FO:{symbol}']['depth']['sell'][0]['price'] - 0.05
+        try:
+            order = client.place_order(
+                quantity=new_trade.quantity,
+                price=new_trade.entry_price,
+                tradingsymbol=symbol,
+                order_type=OrderType.LIMIT,
+                transaction_type=TransactionType.SELL
+            )
+            order_id = order['data']['order_id']  # Extract the order_id
+            new_trade.order_id = order_id
+        except ApiException as e:
+            print("Exception when calling OrderApi->place_order: %s\n" % e)
 
-            new_trade.symbol = symbol
-            new_trade.ltp = get_ltp(symbol)
+        new_trade.symbol = symbol
+        new_trade.ltp = get_ltp(symbol)
 
-            # Use deepcopy to add the current state of new trade to Trades Table
-            session.add(deepcopy(new_trade))
+        # Use deepcopy to add the current state of new trade to Trades Table
+        session.add(deepcopy(new_trade))
 
-            session.commit()
+        session.commit()
 
 
 def update() -> None:
@@ -1756,7 +1777,7 @@ def update() -> None:
                         # save the changes to the database
                         session.commit()
 
-            elif current_ltp > 70 and current_trade.status == TradeStatus.LIVE.value and current_trade.strategy == Strategy.FIXED_PROFIT.value:
+            elif current_ltp > 75 and current_trade.status == TradeStatus.LIVE.value and current_trade.strategy == Strategy.FIXED_PROFIT.value:
                 print('Trend is', trend)
                 if current_trade.rank.split()[0] == 'Call' and trend == 1 and client.get_flags().future < 1:
                     new_trade = Trades()  # Create a new trade object
@@ -1863,10 +1884,11 @@ def update() -> None:
                     session.add(deepcopy(new_trade))
 
                     session.commit()
-            elif current_ltp < 70 and current_trade.status == TradeStatus.LIVE.value:
-                pass
+            elif current_ltp < 75 and current_trade.status == TradeStatus.LIVE.value:
+                print('No action')
             elif current_trade.status == TradeStatus.ORDERED.value:
                 print('Updating new orders')
+                print("Order details for", current_trade.order_id)
                 order_details = client.order_api.get_order_details(
                     api_version=API_VERSION, order_id=current_trade.order_id
                 )
@@ -1878,7 +1900,7 @@ def update() -> None:
                     current_trade.entry_price = order_details.data[-1].average_price
                 elif current_trade.entry_status == TradeStatus.REJECTED.value:
                     current_trade.status = current_trade.entry_status = TradeStatus.REJECTED.value
-                elif current_trade.status == TradeStatus.OPEN.value:
+                elif current_trade.entry_status == TradeStatus.OPEN.value:
                     parameters = client.market_quote_api.get_full_market_quote(
                         get_token(current_trade.symbol), API_VERSION
                     ).to_dict()
@@ -1890,8 +1912,8 @@ def update() -> None:
                         order_type=OrderType.LIMIT.value,
                         trigger_price=0
                     )
-                    modified_order = client.order_api.modify_order(body=body, api_key=API_VERSION)
-                    current_trade.order_id = modified_order['data']['order_id']
+                    modified_order = client.order_api.modify_order(body=body, api_version=API_VERSION)
+                    current_trade.order_id = modified_order.data.order_id  # if not working, use ['order_id']
                 session.commit()
             elif current_trade.exit_status == TradeStatus.ORDERED.value:
                 print('Exit status is {}'.format(current_trade))
@@ -1901,7 +1923,7 @@ def update() -> None:
                 current_trade.exit_status = order_details.data[-1].status
 
                 if current_trade.exit_status == TradeStatus.COMPLETE.value:
-                    current_trade.status = TradeStatus.CLOSED.value
+                    current_trade.status = 'CLOSED'
                     current_trade.entry_status = TradeStatus.COMPLETE.value
                     current_trade.exit_price = order_details.data[-1].average_price
                     if current_trade.trade_type == 'BUY':
@@ -1946,7 +1968,7 @@ def update() -> None:
                             trigger_price=0
                         )
                         modified_order = client.order_api.modify_order(body=body, api_key=API_VERSION)
-                        current_trade.exit_order_id = modified_order['data']['order_id']
+                        current_trade.exit_order_id = modified_order.data.order_id  # if not working, use ['order_id']
                     else:
                         current_trade.exit_status = TradeStatus.COMPLETE.value
                         current_trade.status = TradeStatus.CLOSED.value
@@ -1958,9 +1980,8 @@ def update() -> None:
                                                               2) * current_trade.quantity
                 session.commit()
             if current_trade.trade_type == TransactionType.SELL.value and current_trade.status == TradeStatus.LIVE.value:
-
                 current_trade.profit_loss = round(current_trade.entry_price - current_trade.ltp, 2) * current_trade.quantity
-            else:
+            elif current_trade.trade_type == TransactionType.BUY.value and current_trade.status == TradeStatus.LIVE.value:
                 current_trade.profit_loss = round(current_trade.ltp - current_trade.entry_price, 2) * current_trade.quantity
         # session.query(Clients).filter_by(client_id=client.client_id).first()
         try:
@@ -1970,7 +1991,11 @@ def update() -> None:
             row = session.query(Clients).filter_by(client_id=client.client_id).first()
             total_sum = 0
             for record in upstox_client.PortfolioApi(client.api_client).get_positions(API_VERSION).data:
-                total_sum += record.unrealised
+                if record.unrealised != '':
+                    total_sum += record.unrealised
+                if record.realised != '':
+                    total_sum += record.realised
+
             row.m_to_m = total_sum
             row.used = used_margin
             row.available = available_margin
@@ -2386,7 +2411,7 @@ if question.lower() == 'c':
         schedule.every().day.at("15:28:01").do(close_future_hedge)
         schedule.every().day.at("15:29:01").do(close_future_hedge)
 
-        schedule.every().day.at("09:20:02").do(fixed_profit_entry_with_arguments)
+        schedule.every().day.at("09:22:02").do(fixed_profit_entry_with_arguments)
         schedule.every().tuesday.at("15:26:02").do(fixed_profit_entry_with_arguments)
     while True:
         schedule.run_pending()

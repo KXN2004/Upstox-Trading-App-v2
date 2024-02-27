@@ -356,7 +356,7 @@ class Clients(Base):
     available = Column('Available', Integer, default=0)
     max_profit = Column('MaxProfit', Integer, default=0)
     max_loss = Column('MaxLoss', Integer, default=0)
-    m_to_m = Column('MtoM', Integer, default=0)
+    m_to_m = Column('MTM', Integer, default=0)
 
     def __repr__(self):
         return f'<Client(ClientId="{self.client_id}")>'
