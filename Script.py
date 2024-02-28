@@ -448,7 +448,7 @@ def close_future_hedge():
                 if call_ltp == 0 or put_ltp == 0:
                     print('Not doing anything since 0')
                     continue
-                elif call_ltp > 70 and put_ltp > 70:
+                elif call_ltp > 75 and put_ltp > 75:
                     if super_trend == -1:
                         if client.get_flags().future == 1.:
                             print('Selling future double')
@@ -580,7 +580,7 @@ def close_future_hedge():
                         trade_to_exit.status = TradeStatus.CLOSING.value
                         # save the changes to the database
                         session.commit()
-                elif call_ltp > 70 > put_ltp:
+                elif call_ltp > 75 > put_ltp:
                     if super_trend == -1.:
                         if client.get_flags().future == 1:
                             qty: int = client.strategy.futures * 15
@@ -670,7 +670,7 @@ def close_future_hedge():
 
                         # save the changes to the database
                         session.commit()
-                elif call_ltp < 70 < put_ltp:
+                elif call_ltp < 75 < put_ltp:
                     if super_trend == -1.:
                         if client.get_flags().future == 1:
                             print('Selling future double')
@@ -767,7 +767,7 @@ def close_future_hedge():
                         trade_to_exit.status = TradeStatus.CLOSING.value
                         # save the changes to the database
                         session.commit()
-                elif call_ltp < 70 and put_ltp < 70:
+                elif call_ltp < 75 and put_ltp < 75:
                     if super_trend == -1.:
                         if client.get_flags().future == 1:
                             print('Selling future single')
@@ -1777,7 +1777,7 @@ def update() -> None:
                         # save the changes to the database
                         session.commit()
 
-            elif current_ltp > 75 and current_trade.status == TradeStatus.LIVE.value and current_trade.strategy == Strategy.FIXED_PROFIT.value:
+            elif current_ltp > 80 and current_trade.status == TradeStatus.LIVE.value and current_trade.strategy == Strategy.FIXED_PROFIT.value:
                 print('Trend is', trend)
                 if current_trade.rank.split()[0] == 'Call' and trend == 1 and client.get_flags().future < 1:
                     new_trade = Trades()  # Create a new trade object
@@ -1884,7 +1884,7 @@ def update() -> None:
                     session.add(deepcopy(new_trade))
 
                     session.commit()
-            elif current_ltp < 75 and current_trade.status == TradeStatus.LIVE.value:
+            elif current_ltp < 80 and current_trade.status == TradeStatus.LIVE.value:
                 print('No action')
             elif current_trade.status == TradeStatus.ORDERED.value:
                 print('Updating new orders')
