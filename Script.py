@@ -101,7 +101,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
     global trend
     # Download historical data
     api_instance = upstox_client.HistoryApi()
-    instrument_key = 'NSE_FO|71440'  # str |
+    instrument_key = 'NSE_FO|36611'  # str |
     interval = '1minute'  # str |
     api_version = '2.0'  # str | API Version Header
 
@@ -284,7 +284,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
 
 def micro_trend(profit1, profit2, profit3, profit4, profit5):
     global trend
-    if profit1[0] > 20 and profit1[1] > 10:
+    if profit1[0] > 20 and profit1[1] > 10 or profit1[0] > 80:
         if profit1[5] != 1 and profit1[4] == trend:
             print(f'Trend is same as before {trend} for 1.0 and SL is', profit1[6], profit1[4])
             return profit1[6]
@@ -1118,12 +1118,12 @@ def weeks():
         )
         data = ohlc_data[['Open', 'High', 'Low', 'Close']][::-1]
         print(data)
+        sti = ta.supertrend(data['High'], data['Low'], data['Close'], 10, 4)
+        trend = sti['SUPERTd_10_4.0'].iloc[-1]
+        print('Trend is', trend)
     except ApiException as e:
         print("Exception when calling HistoryApi->get_historical_candle_data: %s\n" % e)
-
-    sti = ta.supertrend(data['High'], data['Low'], data['Close'], 10, 4)
-    trend = sti['SUPERTd_10_4.0'].iloc[-1]
-    print('Trend is', trend)
+        trend = 0
 
 
 def price_strike(expiry: str, price, option):
@@ -1419,6 +1419,10 @@ def next_expiry(client, current_trade) -> None:
 
 def update() -> None:
     """Update the Trades table"""
+    if datetime.now().time() < time(9, 15) or datetime.now().time() > time(15, 30):
+        print("Out of time")
+        return
+
     print("Refreshing data", datetime.now().time())
     for client in active_clients:
         for current_trade in client.get_trades():
@@ -1779,7 +1783,7 @@ def update() -> None:
 
             elif current_ltp > 80 and current_trade.status == TradeStatus.LIVE.value and current_trade.strategy == Strategy.FIXED_PROFIT.value:
                 print('Trend is', trend)
-                if current_trade.rank.split()[0] == 'Call' and trend == 1 and client.get_flags().future < 1:
+                if current_trade.rank.split()[0] == 'Call' and trend == 1 and client.get_flags().future < 1 and client.strategy.futures != 0:
                     new_trade = Trades()  # Create a new trade object
                     if client.get_flags().future == -1:
                         new_trade.quantity = client.strategy.futures * 15
@@ -1832,7 +1836,7 @@ def update() -> None:
                     session.add(deepcopy(new_trade))
 
                     session.commit()
-                elif current_trade.rank.split()[0] == 'Put' and trend == -1 and client.get_flags().future > -1:
+                elif current_trade.rank.split()[0] == 'Put' and trend == -1 and client.get_flags().future > -1 and client.strategy.futures != 0:
                     new_trade = Trades()  # Create a new trade object
                     print('Future is', client.get_flags().future)
                     if client.get_flags().future == 1:
@@ -2034,7 +2038,9 @@ if question.lower() == 'c':
 
         def fixed_profit_entry_with_arguments():
             fixed_profit_entry(week1b)
+
         schedule.every(20).seconds.do(update)
+
         schedule.every().day.at("09:15:01").do(close_future_hedge)
         schedule.every().day.at("09:16:01").do(close_future_hedge)
         schedule.every().day.at("09:17:01").do(close_future_hedge)
