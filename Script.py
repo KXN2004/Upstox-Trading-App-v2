@@ -107,13 +107,16 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
 
     try:
         intraday = api_instance.get_intra_day_candle_data(instrument_key, interval, api_version)
+        print("Intrday successful")
         historical = api_instance.get_historical_candle_data1(instrument_key, interval, todays_date, from_date, api_version)
+        print("historical + intraday successful")
         ohlc_data = df(
             data=intraday.data.candles + historical.data.candles,
             index=[candle_data[0] for candle_data in intraday.data.candles] + [candle_data[0] for candle_data in historical.data.candles],
             columns=['TimeStamp', 'Open', 'High', 'Low', 'Close', 'Volume', 'OI']
         )
         data = ohlc_data[['Open', 'High', 'Low', 'Close']][::-1]
+
     except ApiException as e:
         print("Exception when calling HistoryApi->get_historical_candle_data: %s\n" % e)
 
@@ -1102,7 +1105,7 @@ def weeks():
     # ohlc_data = data[['Open', 'High', 'Low', 'Close']]
 
     api_instance = upstox_client.HistoryApi()
-    instrument_key = 'NSE_FO|71440'  # str |
+    instrument_key = 'NSE_FO|36611'  # str |
     interval = '1minute'  # str |
     api_version = '2.0'  # str | API Version Header
 
@@ -1217,7 +1220,7 @@ def fixed_profit_entry(week1b: str) -> None:
             continue
         new_trade.quantity = client.strategy.fixed_profit * 15
 
-        # Proceed if client has an open order in fixed profit strategy
+        # Proceed if client has no open order in fixed profit strategy
         proceed = not client.get_trades().filter(
             Trades.strategy == Strategy.FIXED_PROFIT.value,
             Trades.status == TradeStatus.LIVE.value
@@ -1420,7 +1423,7 @@ def next_expiry(client, current_trade) -> None:
 def update() -> None:
     """Update the Trades table"""
     if datetime.now().time() < time(9, 15) or datetime.now().time() > time(15, 30):
-        print("Out of time")
+        print("Time out")
         return
 
     print("Refreshing data", datetime.now().time())
@@ -2033,7 +2036,7 @@ if question.lower() == 'c':
                 session.commit()
             except NoResultFound:
                 print(f"No flags found for Client: {client.client_id}")
-    if time(7, 10) < datetime.now().time() < time(15, 35):
+    if time(6, 10) < datetime.now().time() < time(23, 35):
         weeks()
 
         def fixed_profit_entry_with_arguments():
