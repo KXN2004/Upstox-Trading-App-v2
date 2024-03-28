@@ -2440,7 +2440,7 @@ if question.lower() == 'c':
         schedule.every().day.at("15:28:01").do(close_future_hedge)
         schedule.every().day.at("15:29:01").do(close_future_hedge)
 
-        schedule.every().day.at("09:22:02").do(fixed_profit_entry_with_arguments)
+        schedule.every().day.at("09:32:02").do(fixed_profit_entry_with_arguments)
         schedule.every().tuesday.at("15:26:02").do(fixed_profit_entry_with_arguments)
     while True:
         schedule.run_pending()
