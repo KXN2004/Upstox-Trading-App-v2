@@ -33,7 +33,7 @@ class TradeStatus(Enum):
     CLOSING = 'Closing'
     NOT_CLOSED = 'NotClosed'
     OPEN_PENDGING = 'open pending'
-
+    CANCELLED = 'cancelled'
 
 class TransactionType(Enum):
     """

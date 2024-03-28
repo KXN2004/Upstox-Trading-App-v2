@@ -451,7 +451,7 @@ def close_future_hedge():
                 if call_ltp == 0 or put_ltp == 0:
                     print('Not doing anything since 0')
                     continue
-                elif call_ltp > 75 and put_ltp > 75:
+                elif call_ltp > 95 and put_ltp > 95:
                     if super_trend == -1:
                         if client.get_flags().future == 1.:
                             print('Selling future double')
@@ -583,7 +583,7 @@ def close_future_hedge():
                         trade_to_exit.status = TradeStatus.CLOSING.value
                         # save the changes to the database
                         session.commit()
-                elif call_ltp > 75 > put_ltp:
+                elif call_ltp > 95 > put_ltp:
                     if super_trend == -1.:
                         if client.get_flags().future == 1:
                             qty: int = client.strategy.futures * 15
@@ -673,7 +673,7 @@ def close_future_hedge():
 
                         # save the changes to the database
                         session.commit()
-                elif call_ltp < 75 < put_ltp:
+                elif call_ltp < 95 < put_ltp:
                     if super_trend == -1.:
                         if client.get_flags().future == 1:
                             print('Selling future double')
@@ -770,7 +770,7 @@ def close_future_hedge():
                         trade_to_exit.status = TradeStatus.CLOSING.value
                         # save the changes to the database
                         session.commit()
-                elif call_ltp < 75 and put_ltp < 75:
+                elif call_ltp < 95 and put_ltp < 95:
                     if super_trend == -1.:
                         if client.get_flags().future == 1:
                             print('Selling future single')
@@ -1422,7 +1422,7 @@ def next_expiry(client, current_trade) -> None:
 
 def update() -> None:
     """Update the Trades table"""
-    if datetime.now().time() < time(9, 15) or datetime.now().time() > time(15, 30):
+    if datetime.now().time() < time(9, 16) or datetime.now().time() > time(15, 30):
         print("Time out")
         return
 
@@ -1784,7 +1784,7 @@ def update() -> None:
                         # save the changes to the database
                         session.commit()
 
-            elif current_ltp > 80 and current_trade.status == TradeStatus.LIVE.value and current_trade.strategy == Strategy.FIXED_PROFIT.value:
+            elif current_ltp > 100 and current_trade.status == TradeStatus.LIVE.value and current_trade.strategy == Strategy.FIXED_PROFIT.value:
                 print('Trend is', trend)
                 if current_trade.rank.split()[0] == 'Call' and trend == 1 and client.get_flags().future < 1 and client.strategy.futures != 0:
                     new_trade = Trades()  # Create a new trade object
@@ -1921,6 +1921,26 @@ def update() -> None:
                     )
                     modified_order = client.order_api.modify_order(body=body, api_version=API_VERSION)
                     current_trade.order_id = modified_order.data.order_id  # if not working, use ['order_id']
+                elif current_trade.entry_status == TradeStatus.CANCELLED.value:
+                    order_details = client.order_api.get_order_details(
+                        api_version=API_VERSION, order_id=current_trade.order_id
+                    )
+                    traded = order_details.data[-1].quantity
+                    print(traded, 'qty traded before cancel')
+                    if traded > 0:
+                        try:
+                            order = client.place_order(
+                                quantity=current_trade.quantity - traded,
+                                price=0,
+                                product=Product.DELIVERY,
+                                tradingsymbol=new_trade.symbol,
+                                order_type=OrderType.MARKET,
+                                transaction_type=current_trade.trade_type
+                            )
+                            current_trade.order_id = order['data']['order_id']  # Extract the order_id
+                        except ApiException as e:
+                            print("Exception when calling OrderApi->place_order: %s\n" % e)
+
                 session.commit()
             elif current_trade.exit_status == TradeStatus.ORDERED.value:
                 print('Exit status is {}'.format(current_trade))
