@@ -101,7 +101,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
     global trend
     # Download historical data
     api_instance = upstox_client.HistoryApi()
-    instrument_key = 'NSE_FO|36611'  # str |
+    instrument_key = 'NSE_FO|52220'  # str |
     interval = '1minute'  # str |
     api_version = '2.0'  # str | API Version Header
 
@@ -1105,7 +1105,7 @@ def weeks():
     # ohlc_data = data[['Open', 'High', 'Low', 'Close']]
 
     api_instance = upstox_client.HistoryApi()
-    instrument_key = 'NSE_FO|36611'  # str |
+    instrument_key = 'NSE_FO|52220'  # str |
     interval = '1minute'  # str |
     api_version = '2.0'  # str | API Version Header
 
