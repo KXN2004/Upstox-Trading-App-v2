@@ -101,7 +101,7 @@ def supertrend(period: int = 10, multiplier: int = 4) -> float:
     global trend
     # Download historical data
     api_instance = upstox_client.HistoryApi()
-    instrument_key = 'NSE_FO|52220'  # str |
+    instrument_key = 'NSE_FO|46923'  # str |
     interval = '1minute'  # str |
     api_version = '2.0'  # str | API Version Header
 
@@ -924,6 +924,7 @@ def weeks():
         #     DD0 = DD1
         #     wednesday0 = wednesday1-relativedelta(days=6)
     elif shortweek == 1:
+        print('Next week Bank short week')
         wednesday1 = wednesday1 - relativedelta(days=1)
     elif shortweek == 2:
         wednesday2 = wednesday2 - relativedelta(days=1)
@@ -1012,20 +1013,20 @@ def weeks():
     if last_thursday != wednesday2.day:
         week2b = 'BANKNIFTY' + str(YY2) + str(MM2) + str(DD2)
         fromtime2 = datetime(YY2, MM2, int(DD2), 15, 30)
-        print('Week2 Bank is', week2b)
     else:
-        week2b = 'BANKNIFTY' + str(YY2) + str(MM2).upper()
+        week2b = 'BANKNIFTY' + str(YY2) + str(thursday1.strftime('%h').upper())
         fromtime2 = datetime(YY2, MM2, int(DD2), 15, 30)
-        print('Week2 Bank is', week2b)
     if wednesday == 7 or (wednesday == 1 and shortweek == 1):
         YY0 += 2000
         MM0 = wednesday0.month
         DD0 = int(DD0)
         fromtime0 = datetime(YY0, MM0, DD0, 15, 30)
         days_left = fromtime0
+    week1b = 'BANKNIFTY24430'
+    print('Week2 Bank is', week2b)
     print('Week1 bank is', week1b)
     print('Month1 bank is', month1b)
-    print('Time to expiry for bank is', days_left)
+    print('Time to expiry for bank0 is', days_left)
     if thursday == 7 or (thursday == 1 and shortweek == 1):
         if thursday == 1 and shortweek == 1:
             thursday0 = thursday1 - relativedelta(days=1)
@@ -1094,6 +1095,7 @@ def weeks():
         DD0 = int(DD0)
         fromtime0n = datetime(YY0, MM0, DD0, 15, 30)
         days_leftn = fromtime0n
+
     print('Week1 for Nifty is', week1n)
     print('Month1 for Nifty is', month1n)
     print('Time to expiry for Nifty is', days_leftn)
@@ -1105,7 +1107,7 @@ def weeks():
     # ohlc_data = data[['Open', 'High', 'Low', 'Close']]
 
     api_instance = upstox_client.HistoryApi()
-    instrument_key = 'NSE_FO|52220'  # str |
+    instrument_key = 'NSE_FO|46923'  # str |
     interval = '1minute'  # str |
     api_version = '2.0'  # str | API Version Header
 
@@ -1239,6 +1241,7 @@ def close_old_insurance():
 
                         # save the changes to the database
                         session.commit()
+
 def fixed_profit_entry(week1b: str) -> None:
     """Fixed profit entry strategy"""
     print('Inside fixed Profit entry')
@@ -1256,7 +1259,7 @@ def fixed_profit_entry(week1b: str) -> None:
     # Common for all clients
     if (wednesday == 1 or (wednesday == 2 and shortweek == 1)) and datetime.now().time() > time(11, 30):
         week1b = week2b
-    print('garsdv')
+
     _, put_symbol = price_strike(week1b, 60, PUT)
     _, call_symbol = price_strike(week1b, 60, CALL)
 
@@ -1406,7 +1409,7 @@ def fixed_profit_entry(week1b: str) -> None:
 
 def next_expiry(client, current_trade) -> None:
     global week2b, week1b
-
+    print('Executing next week trade')
     # client.close_trade(current_trade)
     if 'week0b' in globals():
         next_week = week1b
@@ -1471,8 +1474,40 @@ def next_expiry(client, current_trade) -> None:
 
         session.commit()
 
+def stop_loss_entry(client: Client, current_trade: Trades):
+    tradingsymbol = current_trade.symbol
+    current_ltp = get_ltp(tradingsymbol=tradingsymbol)
+    if current_ltp < 119:
+        try:
+            order = client.place_order(
+                quantity=current_trade.quantity,
+                price=130.0,
+                tradingsymbol=tradingsymbol,
+                order_type=OrderType.STOPLOSS_LIMIT,
+                trigger_price=121.0,
+                transaction_type=TransactionType.BUY
+            )
+            current_trade.exit_order_id = order['data']['order_id']
+            current_trade.status = TradeStatus.LIVED.value
+            session.commit()
+        except ApiException as e:
+            print("Exception when calling OrderApi->place_order: %s\n" % e)
+
+    
+def stop_loss_exit(client: Client, current_trade: Trades):
+    if current_trade.status == TradeStatus.LIVED:
+        try:
+            api_response = client.order_api.cancel_order(current_trade.order_id, API_VERSION)
+            print(api_response)
+            current_trade.status = TradeStatus.LIVE
+            current_trade.exit_order_id = 'NA'
+            session.commit()
+        except ApiException as e:
+            print("Exception when calling OrderApi->cancel_order: %s\n" % e)
+        
 
 def update() -> None:
+    global week1b, week2b
     """Update the Trades table"""
     if datetime.now().time() < time(9, 16) or datetime.now().time() > time(15, 30):
         print("Time out")
@@ -1492,10 +1527,14 @@ def update() -> None:
             if current_ltp == 0:
                 print('LTP not found')
                 continue
-            elif current_ltp < 30 and current_trade.status == TradeStatus.LIVE.value:
+            elif current_ltp < 30 and (current_trade.status == TradeStatus.LIVE.value or current_trade.status == TradeStatus.LIVED.value):
                 print('LTP below 30')
                 # If rank of current trade is Call 1 or Put 1
                 if current_trade.rank in ('Call 1', 'Put 1'):
+                    if current_trade.status == TradeStatus.LIVED.value:
+                        stop_loss_exit(client, current_trade)
+                    if ((wednesday == 1 and shortweek == 0) or (wednesday == 2 and shortweek == 1)) and datetime.now().time() > time(11, 30):
+                        week1b = week2b
                     print('Selling to be changed', current_trade.symbol)
                     print(current_trade.rank)
                     # Filter out all the live trades with ranks ending with an `i`
@@ -1562,8 +1601,8 @@ def update() -> None:
                     strike, symbol = price_strike(week1b, 50, rank)
 
                     client.close_trade(current_trade)
-
-                    if strike == int(current_trade.symbol[-7:-2]) or not (40 < get_ltp(symbol) < 60):
+                    print(symbol)
+                    if strike == int(current_trade.symbol[-7:-2]) or not (42 < get_ltp(symbol) < 60):
                         next_expiry(client, current_trade)
                     elif (wednesday == 1 or (wednesday == 2 and shortweek == 1)) and datetime.now().time() > time( 12, 30):
                         next_expiry(client, current_trade)
@@ -1610,8 +1649,10 @@ def update() -> None:
 
                         # save the changes to the database
                         session.commit()
-            elif current_ltp > 120 and current_trade.status == TradeStatus.LIVE.value and current_trade.strategy == Strategy.FIXED_PROFIT.value:
+            elif current_ltp > 120 and (current_trade.status == TradeStatus.LIVE.value or current_trade.status == TradeStatus.LIVED.value) and current_trade.strategy == Strategy.FIXED_PROFIT.value:
                 print("Current LTP is: ", current_ltp)
+                if ((wednesday == 1 and shortweek == 0) or (wednesday == 2 and shortweek == 1)) and datetime.now().time() > time(11, 30):
+                    week1b = week2b
                 if current_trade.rank in ('Call 0', 'Put 0'):
                     client.close_trade(current_trade)
                     current_trade.status = TradeStatus.CLOSING.value
@@ -1780,7 +1821,43 @@ def update() -> None:
                     session.commit()
 
                 elif current_trade.rank in ('Call 1', 'Put 1'):
-                    client.close_trade(current_trade)
+                    if current_trade.status == TradeStatus.LIVED.value:
+                        try:
+                            order_details = client.order_api.get_order_details(
+                                api_version=API_VERSION, order_id=current_trade.exit_order_id
+                            )
+                            current_trade.exit_status = order_details.data[-1].status
+                            current_trade.exit_price = order_details.data[-1].average_price
+                        except:
+                            print("Order Id not found, skipping")
+                            current_trade.exit_price = 0
+                        if current_trade.exit_status == TradeStatus.COMPLETE.value:
+                            current_trade.status = TradeStatus.CLOSED.value
+                            # current_trade.entry_status = TradeStatus.COMPLETE.value
+                            if current_trade.trade_type == TransactionType.SELL.value:
+                                current_trade.profit_loss = round(current_trade.entry_price - current_trade.exit_price, 2) * current_trade.quantity
+                            else:
+                                current_trade.profit_loss = round(current_trade.exit_price - current_trade.entry_price, 2) * current_trade.quantity
+                        elif current_trade.exit_status == TradeStatus.REJECTED.value:
+                            current_trade.exit_status = TradeStatus.REJECTED.value
+                            current_trade.status = TradeStatus.NOT_CLOSED.value
+                            client.close_trade(current_trade)
+                        elif current_trade.exit_status == TradeStatus.OPEN_PENDGING.value:
+                            order_details = client.order_api.get_order_details(
+                                api_version=API_VERSION, order_id=current_trade.exit_order_id
+                            )
+                            if order_details.data[-1].status != TradeStatus.COMPLETE.value:
+                                body = upstox_client.ModifyOrderRequest(
+                                    validity=Validity.DAY.value,
+                                    price=0,
+                                    order_id=current_trade.order_id,
+                                    order_type=OrderType.MARKET.value,
+                                    trigger_price=0
+                                )
+                                modified_order = client.order_api.modify_order(body=body, api_key=API_VERSION)
+                                current_trade.exit_order_id = modified_order.data.order_id
+                    else:
+                        client.close_trade(current_trade)
                     rank = current_trade.rank.split()[0]
                     strike, symbol = price_strike(week1b, 100, rank)
                     print('New symbol is', symbol)
@@ -1836,7 +1913,81 @@ def update() -> None:
                         # save the changes to the database
                         session.commit()
 
-            elif current_ltp > 100 and current_trade.status == TradeStatus.LIVE.value and current_trade.strategy == Strategy.FIXED_PROFIT.value:
+            elif (current_ltp > 100 and current_trade.status == TradeStatus.LIVE.value or current_trade.status == TradeStatus.LIVED.value) and current_trade.strategy == Strategy.FIXED_PROFIT.value:
+                if current_trade.status == TradeStatus.LIVE.value:
+                    stop_loss_entry(client, current_trade)
+                else:
+                    try:
+                        order_details = client.order_api.get_order_details(
+                            api_version=API_VERSION, order_id=current_trade.exit_order_id
+                        )
+                        current_trade.exit_status = order_details.data[-1].status
+                        current_trade.exit_price = order_details.data[-1].average_price
+                    except:
+                        print("Order Id not found, skipping")
+                        current_trade.exit_price = 0
+                    if current_trade.exit_status == TradeStatus.COMPLETE.value:
+                        current_trade.status = TradeStatus.CLOSED.value
+                        # current_trade.entry_status = TradeStatus.COMPLETE.value
+                        if current_trade.trade_type == TransactionType.SELL.value:
+                            current_trade.profit_loss = round(current_trade.entry_price - current_trade.exit_price, 2) * current_trade.quantity
+                        else:
+                            current_trade.profit_loss = round(current_trade.exit_price - current_trade.entry_price, 2) * current_trade.quantity
+                        rank = current_trade.rank.split()[0]
+                        strike, symbol = price_strike(week1b, 100, rank)
+                        print('New symbol is', symbol)
+
+
+                        if strike == int(current_trade.symbol[-7:-2]) or not (85 < get_ltp(symbol) < 110):
+                            insurance_trade = client.get_trades().filter(
+                                Trades.rank == current_trade.rank + 'i',
+                                Trades.status == TradeStatus.LIVE.value
+                            ).first()
+
+                            client.close_trade(insurance_trade)
+                            next_expiry(client, current_trade)
+                        else:
+                            # Duplicate the current trade
+                            new_trade = Trades()
+                            new_trade.client_id = current_trade.client_id
+                            new_trade.strategy = current_trade.strategy
+                            new_trade.quantity = current_trade.quantity
+                            new_trade.rank = current_trade.rank
+                            new_trade.days_left = current_trade.days_left
+                            new_trade.trade_type = current_trade.trade_type
+                            new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
+                            new_trade.date_time = datetime.now().time()
+                            new_trade.exit_price = -1
+                            new_trade.exit_status = NOT_APPLICABLE
+                            new_trade.profit_loss = 0
+
+                            new_trade.order_id = randint(10, 99)
+                            parameters = client.market_quote_api.get_full_market_quote(get_token(symbol),
+                                                                                    API_VERSION).to_dict()
+                            new_trade.entry_price = parameters['data'][f'NSE_FO:{symbol}']['depth']['sell'][0][
+                                                        'price'] - 0.05
+                            try:
+                                order = client.place_order(
+                                    quantity=new_trade.quantity,
+                                    price=new_trade.entry_price,
+                                    tradingsymbol=symbol,
+                                    order_type=OrderType.LIMIT,
+                                    transaction_type=TransactionType.SELL
+                                )
+                                order_id = order['data']['order_id']  # Extract the order_id
+                                new_trade.order_id = order_id
+                            except ApiException as e:
+                                print("Exception when calling OrderApi->place_order: %s\n" % e)
+
+                            new_trade.symbol = symbol
+                            new_trade.ltp = get_ltp(symbol)
+
+                            # Use deepcopy to add the current state of new trade to Trades Table
+                            session.add(deepcopy(new_trade))
+
+                            # save the changes to the database
+                            session.commit()
+
                 print('Trend is', trend)
                 if current_trade.rank.split()[0] == 'Call' and trend == 1 and client.get_flags().future < 1 and client.strategy.futures != 0:
                     new_trade = Trades()  # Create a new trade object
@@ -2032,7 +2183,6 @@ def update() -> None:
                         current_trade.profit_loss = round(current_trade.exit_price - current_trade.entry_price, 2) * current_trade.quantity
 
                 elif current_trade.exit_status == TradeStatus.REJECTED.value:
-                    current_trade.exit_status = TradeStatus.REJECTED.value
                     current_trade.status = TradeStatus.NOT_CLOSED.value
                 elif current_trade.exit_status == TradeStatus.OPEN_PENDGING.value:
                     order_details = client.order_api.get_order_details(
@@ -2088,6 +2238,13 @@ def update() -> None:
         #     if trade.realised = '':
         #         client.get_trades().query()
 
+def remove_SL():
+    for client in active_clients:
+        print('Removing SL')
+        for current_trade in client.get_trades():
+            if current_trade.status == TradeStatus.LIVED:
+                stop_loss_exit(client, current_trade)
+
 question = input('Do you want to start fresh or continue from where stopped?(F/C): ')
 
 if question.lower() == 'c':
@@ -2108,7 +2265,7 @@ if question.lower() == 'c':
                 session.commit()
             except NoResultFound:
                 print(f"No flags found for Client: {client.client_id}")
-    if time(6, 10) < datetime.now().time() < time(23, 35):
+    if time(0, 10) < datetime.now().time() < time(23, 35):
         weeks()
 
         def fixed_profit_entry_with_arguments():
@@ -2490,12 +2647,14 @@ if question.lower() == 'c':
         # schedule.every().day.at("15:26:01").do(close_future_hedge)
         # schedule.every().day.at("15:27:01").do(close_future_hedge)
         # schedule.every().day.at("15:28:01").do(close_future_hedge)
-        schedule.every().day.at("15:29:01").do(close_future_hedge)
+        schedule.every().day.at("15:29:43").do(close_future_hedge)
+        schedule.every().day.at("15:29:41").do(remove_SL)
 
         schedule.every().day.at("09:32:02").do(fixed_profit_entry_with_arguments)
         schedule.every().tuesday.at("15:26:02").do(fixed_profit_entry_with_arguments)
         schedule.every().wednesday.at("15:26:02").do(close_old_insurance)
         schedule.every().thursday.at("15:26:02").do(close_old_insurance)
+        schedule.every().tuesday.at("15:26:02").do(close_old_insurance)
     while True:
         schedule.run_pending()
         sleep(1)

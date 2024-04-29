@@ -25,6 +25,7 @@ class TradeStatus(Enum):
     ORDERED = 'Ordered'
     PENDING = 'pending'
     LIVE = 'live'
+    LIVED = 'lived'
     EXECUTED = 'executed'
     CLOSED = 'closed'
     REJECTED = 'rejected'
@@ -34,6 +35,7 @@ class TradeStatus(Enum):
     NOT_CLOSED = 'NotClosed'
     OPEN_PENDGING = 'open pending'
     CANCELLED = 'cancelled'
+    TRIGGER_PENDING = 'trigger pending'
 
 class TransactionType(Enum):
     """
