@@ -130,6 +130,7 @@ class Strategy(Enum):
     FUTURES = 'Futures'
     AUTO_FUTURES = 'AutoFutures'
     FUT_HEDGE = 'FutureHedge'
+    OPTIONBUY = 'Optionbuy'
 
 
 # Trade table: status column: OPENED|ORDERED|PENDING|EXECUTED|CLOSED|REJECTED
@@ -326,6 +327,7 @@ class Strategies(Base):
     bank_nifty = Column('BankNifty', Integer, default=0)
     futures = Column('Futures', Integer, default=0)
     auto_futures = Column('AutoFutures', Integer, default=0)
+    optionbuy = Column('Optionbuy', Integer, default=0)
 
     def __repr__(self):
         return f'<Strategie(ClientId="{self.client_id}")>'
@@ -343,7 +345,7 @@ class Flags(Base):
     future = Column('Future', Integer, default=0)
     first_leg = Column('FirstLeg', Integer, default=0)
     five_minutes = Column('FiveMinutes', Integer, default=0)
-    sixty_minutes = Column('SixtyMinutes', Integer, default=0)
+    optionbuy = Column('optionbuy', Integer, default=0)
 
     def __repr__(self):
         return f'<Flag(ClientId="{self.client_id}")>'

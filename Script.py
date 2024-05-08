@@ -33,6 +33,7 @@ no_of_clients = 0
 
 for _ in session.query(Credentials).filter_by(is_active=YES):
     active_clients.append(Client(_.client_id, _.access_token, session))
+    print(Client(_.client_id, _.access_token, session).strategy.optionbuy)
     no_of_clients += 1
 
 
@@ -399,6 +400,51 @@ def micro_trend(profit1, profit2, profit3, profit4, profit5):
         print('Trend is not defined for any multiplier')
         return 0
 
+def optionbuy(client, option):
+    if option[-2:] == 'CE':
+        strike = int(option[-7:-2]) - 200
+        buyoption = option[:-7] + str(strike) +'CE'
+        flags = session.query(Flags).filter_by(client_id=client.client_id).one()
+        flags.optionbuy = 1
+    else:
+        strike = int(option[-7:-2]) + 200
+        buyoption = option[:-7] + str(strike) +'PE'
+        flags = session.query(Flags).filter_by(client_id=client.client_id).one()
+        flags.optionbuy = -1
+    new_trade = Trades()
+    new_trade.client_id = client.client_id
+    new_trade.strategy = Strategy.OPTIONBUY.value
+    new_trade.quantity = client.strategy.optionbuy * 15
+    new_trade.days_left = fromtime1
+    new_trade.trade_type = 'BUY'
+    new_trade.rank = 'trending'
+    new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
+    new_trade.date_time = datetime.now().time()
+    new_trade.exit_price = -1
+    new_trade.exit_status = NOT_APPLICABLE
+    new_trade.profit_loss = 0
+    new_trade.symbol = buyoption
+    print(buyoption)
+    new_trade.ltp = get_ltp(buyoption)
+    new_trade.order_id = randint(10, 99)
+    parameters = client.market_quote_api.get_full_market_quote(get_token(buyoption),
+                                                                API_VERSION).to_dict()
+    new_trade.entry_price = parameters['data'][f'NSE_FO:{buyoption}']['depth']['sell'][0][
+                                'price']
+    try:
+        order = client.place_order(
+            quantity=new_trade.quantity,
+            price=0,
+            tradingsymbol=new_trade.symbol,
+            order_type=OrderType.MARKET,
+            transaction_type=TransactionType.BUY
+        )
+        order_id = order['data']['order_id']  # Extract the order_id
+        new_trade.order_id = order_id
+    except ApiException as e:
+        print("Exception when calling OrderApi->place_order: %s\n" % e)
+    session.add(deepcopy(new_trade))
+    session.commit()  
 
 def close_future_hedge():
     super_trend = supertrend()
@@ -1022,7 +1068,7 @@ def weeks():
         DD0 = int(DD0)
         fromtime0 = datetime(YY0, MM0, DD0, 15, 30)
         days_left = fromtime0
-    week1b = 'BANKNIFTY24430'
+    # week1b = 'BANKNIFTY24430'
     print('Week2 Bank is', week2b)
     print('Week1 bank is', week1b)
     print('Month1 bank is', month1b)
@@ -1518,7 +1564,6 @@ def update() -> None:
         for current_trade in client.get_trades():
             if current_trade.status == TradeStatus.CLOSED.value:
                 continue
-
             else:
                 current_ltp = get_ltp(current_trade.symbol)
                 current_trade.ltp = current_ltp
@@ -1651,6 +1696,7 @@ def update() -> None:
                         session.commit()
             elif current_ltp > 120 and (current_trade.status == TradeStatus.LIVE.value or current_trade.status == TradeStatus.LIVED.value) and current_trade.strategy == Strategy.FIXED_PROFIT.value:
                 print("Current LTP is: ", current_ltp)
+                print("Current LTP greater than 120")
                 if ((wednesday == 1 and shortweek == 0) or (wednesday == 2 and shortweek == 1)) and datetime.now().time() > time(11, 30):
                     week1b = week2b
                 if current_trade.rank in ('Call 0', 'Put 0'):
@@ -1914,6 +1960,10 @@ def update() -> None:
                         session.commit()
 
             elif (current_ltp > 100 and current_trade.status == TradeStatus.LIVE.value or current_trade.status == TradeStatus.LIVED.value) and current_trade.strategy == Strategy.FIXED_PROFIT.value:
+                flags = session.query(Flags).filter_by(client_id=client.client_id).one()
+                if flags.optionbuy == 0 and client.strategy.optionbuy > 0:
+                    print("Executing optionbuy for client", client.client_id)
+                    optionbuy(client, current_trade.symbol)
                 if current_trade.status == TradeStatus.LIVE.value:
                     stop_loss_entry(client, current_trade)
                 else:
@@ -2094,8 +2144,24 @@ def update() -> None:
                     session.add(deepcopy(new_trade))
 
                     session.commit()
-            elif current_ltp < 80 and current_trade.status == TradeStatus.LIVE.value:
-                print('No action')
+            elif current_ltp < 90 and (current_trade.status == TradeStatus.LIVE.value or current_trade.status == TradeStatus.LIVED.value) and current_trade.strategy == Strategy.FIXED_PROFIT.value:
+                print("Symbol is", current_trade.symbol)
+                flags = session.query(Flags).filter_by(client_id=client.client_id).one()
+                print("Client is", client.client_id, "Strategy is", client.strategy.optionbuy)
+                if flags.optionbuy != 0 and client.strategy.optionbuy > 0:
+                    try:
+                        print("optionbuy is", flags.optionbuy, "and rank is", current_trade.rank, "symbol is", current_trade.symbol)
+                        if (flags.optionbuy == 1 and current_trade.rank == 'Call 1') or (flags.optionbuy == -1 and current_trade.rank == 'Put 1'):
+                            print("ghx")
+                            flags.optionbuy = 0
+                            trade_to_close = client.get_trades().filter_by(
+                                strategy=Strategy.OPTIONBUY.value,
+                                status=TradeStatus.LIVE.value
+                            ).first()
+                            client.close_trade(trade_to_close)
+                            session.commit()
+                    except Exception as e:
+                        print(e)
             elif current_trade.status == TradeStatus.ORDERED.value:
                 print('Updating new orders')
                 print("Order details for", current_trade.order_id)
@@ -2647,10 +2713,10 @@ if question.lower() == 'c':
         # schedule.every().day.at("15:26:01").do(close_future_hedge)
         # schedule.every().day.at("15:27:01").do(close_future_hedge)
         # schedule.every().day.at("15:28:01").do(close_future_hedge)
-        schedule.every().day.at("15:29:43").do(close_future_hedge)
-        schedule.every().day.at("15:29:41").do(remove_SL)
+        # schedule.every().day.at("15:29:13").do(close_future_hedge)
+        schedule.every().day.at("15:29:31").do(remove_SL)
 
-        schedule.every().day.at("09:32:02").do(fixed_profit_entry_with_arguments)
+        schedule.every().day.at("09:25:02").do(fixed_profit_entry_with_arguments)
         schedule.every().tuesday.at("15:26:02").do(fixed_profit_entry_with_arguments)
         schedule.every().wednesday.at("15:26:02").do(close_old_insurance)
         schedule.every().thursday.at("15:26:02").do(close_old_insurance)
