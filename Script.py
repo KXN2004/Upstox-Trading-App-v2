@@ -33,7 +33,6 @@ no_of_clients = 0
 
 for _ in session.query(Credentials).filter_by(is_active=YES):
     active_clients.append(Client(_.client_id, _.access_token, session))
-    print(Client(_.client_id, _.access_token, session).strategy.optionbuy)
     no_of_clients += 1
 
 
@@ -401,50 +400,77 @@ def micro_trend(profit1, profit2, profit3, profit4, profit5):
         return 0
 
 def optionbuy(client, option):
+    global trend
     if option[-2:] == 'CE':
         strike = int(option[-7:-2]) - 200
         buyoption = option[:-7] + str(strike) +'CE'
-        flags = session.query(Flags).filter_by(client_id=client.client_id).one()
-        flags.optionbuy = 1
     else:
         strike = int(option[-7:-2]) + 200
         buyoption = option[:-7] + str(strike) +'PE'
-        flags = session.query(Flags).filter_by(client_id=client.client_id).one()
-        flags.optionbuy = -1
-    new_trade = Trades()
-    new_trade.client_id = client.client_id
-    new_trade.strategy = Strategy.OPTIONBUY.value
-    new_trade.quantity = client.strategy.optionbuy * 15
-    new_trade.days_left = fromtime1
-    new_trade.trade_type = 'BUY'
-    new_trade.rank = 'trending'
-    new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
-    new_trade.date_time = datetime.now().time()
-    new_trade.exit_price = -1
-    new_trade.exit_status = NOT_APPLICABLE
-    new_trade.profit_loss = 0
-    new_trade.symbol = buyoption
-    print(buyoption)
-    new_trade.ltp = get_ltp(buyoption)
-    new_trade.order_id = randint(10, 99)
-    parameters = client.market_quote_api.get_full_market_quote(get_token(buyoption),
-                                                                API_VERSION).to_dict()
-    new_trade.entry_price = parameters['data'][f'NSE_FO:{buyoption}']['depth']['sell'][0][
-                                'price']
+    
+    api_instance = upstox_client.HistoryApi()
+    instrument_key = get_token(buyoption) # str |
+    interval = '1minute'  # str |
+    api_version = '2.0'  # str | API Version Header
+
     try:
-        order = client.place_order(
-            quantity=new_trade.quantity,
-            price=0,
-            tradingsymbol=new_trade.symbol,
-            order_type=OrderType.MARKET,
-            transaction_type=TransactionType.BUY
+        intraday = api_instance.get_intra_day_candle_data(instrument_key, interval, api_version)
+        print("Intrday successful")
+        historical = api_instance.get_historical_candle_data1(instrument_key, interval, todays_date, from_date, api_version)
+        print("historical + intraday successful")
+        ohlc_data = df(
+            data=intraday.data.candles + historical.data.candles,
+            index=[candle_data[0] for candle_data in intraday.data.candles] + [candle_data[0] for candle_data in historical.data.candles],
+            columns=['TimeStamp', 'Open', 'High', 'Low', 'Close', 'Volume', 'OI']
         )
-        order_id = order['data']['order_id']  # Extract the order_id
-        new_trade.order_id = order_id
+        data = ohlc_data[['Open', 'High', 'Low', 'Close']][::-1]
+
     except ApiException as e:
-        print("Exception when calling OrderApi->place_order: %s\n" % e)
-    session.add(deepcopy(new_trade))
-    session.commit()  
+        print("Exception when calling HistoryApi->get_historical_candle_data: %s\n" % e)
+    sti = ta.supertrend(data['High'], data['Low'], data['Close'], 10, 2)
+    direction = sti['SUPERTd_10_2.0'].iloc[-1]
+    print('Direction for buying is', direction)
+    trend = direction
+    if trend == 1:
+        flags = session.query(Flags).filter_by(client_id=client.client_id).one()
+        if option[-2:] == 'CE':
+            flags.optionbuy = 1
+        else:
+            flags.optionbuy = -1
+        new_trade = Trades()
+        new_trade.client_id = client.client_id
+        new_trade.strategy = Strategy.OPTIONBUY.value
+        new_trade.quantity = client.strategy.optionbuy * 15
+        new_trade.days_left = fromtime1
+        new_trade.trade_type = 'BUY'
+        new_trade.rank = 'trending'
+        new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
+        new_trade.date_time = datetime.now().time()
+        new_trade.exit_price = -1
+        new_trade.exit_status = NOT_APPLICABLE
+        new_trade.profit_loss = 0
+        new_trade.symbol = buyoption
+        print(buyoption)
+        new_trade.ltp = get_ltp(buyoption)
+        new_trade.order_id = randint(10, 99)
+        parameters = client.market_quote_api.get_full_market_quote(get_token(buyoption),
+                                                                    API_VERSION).to_dict()
+        new_trade.entry_price = parameters['data'][f'NSE_FO:{buyoption}']['depth']['sell'][0][
+                                    'price']
+        try:
+            order = client.place_order(
+                quantity=new_trade.quantity,
+                price=0,
+                tradingsymbol=new_trade.symbol,
+                order_type=OrderType.MARKET,
+                transaction_type=TransactionType.BUY.value
+            )
+            order_id = order['data']['order_id']  # Extract the order_id
+            new_trade.order_id = order_id
+        except ApiException as e:
+            print("Exception when calling OrderApi->place_order: %s\n" % e)
+        session.add(deepcopy(new_trade))
+        session.commit()  
 
 def close_future_hedge():
     super_trend = supertrend()
@@ -540,7 +566,7 @@ def close_future_hedge():
                                 price=0,
                                 tradingsymbol=new_trade.symbol,
                                 order_type=OrderType.MARKET,
-                                transaction_type=TransactionType.SELL
+                                transaction_type=TransactionType.SELL.value
                             )
                             order_id = order['data']['order_id']  # Extract the order_id
                             new_trade.order_id = order_id
@@ -604,7 +630,7 @@ def close_future_hedge():
                                 price=0,
                                 tradingsymbol=new_trade.symbol,
                                 order_type=OrderType.MARKET,
-                                transaction_type=TransactionType.BUY
+                                transaction_type=TransactionType.BUY.value
                             )
                             order_id = order['data']['order_id']  # Extract the order_id
                             new_trade.order_id = order_id
@@ -707,7 +733,7 @@ def close_future_hedge():
                                 price=0,
                                 tradingsymbol=new_trade.symbol,
                                 order_type=OrderType.MARKET,
-                                transaction_type=TransactionType.BUY
+                                transaction_type=TransactionType.BUY.value
                             )
                             order_id = order['data']['order_id']  # Extract the order_id
                             new_trade.order_id = order_id
@@ -760,7 +786,7 @@ def close_future_hedge():
                                 price=0,
                                 tradingsymbol=new_trade.symbol,
                                 order_type=OrderType.MARKET,
-                                transaction_type=TransactionType.SELL
+                                transaction_type=TransactionType.SELL.value
                             )
                             order_id = order['data']['order_id']  # Extract the order_id
                             new_trade.order_id = order_id
@@ -1275,7 +1301,7 @@ def close_old_insurance():
                                 price=0,
                                 tradingsymbol=new_trade.symbol,
                                 order_type=OrderType.MARKET,
-                                transaction_type=TransactionType.BUY
+                                transaction_type=TransactionType.BUY.value
                             )
                             order_id = order['data']['order_id']  # Extract the order_id
                             new_trade.order_id = order_id
@@ -1353,7 +1379,7 @@ def fixed_profit_entry(week1b: str) -> None:
                         price=0,
                         tradingsymbol=new_trade.symbol,
                         order_type=OrderType.MARKET,
-                        transaction_type=TransactionType.BUY
+                        transaction_type=TransactionType.BUY.value
                     )
                     order_id = order['data']['order_id']  # Extract the order_id
                     new_trade.order_id = order_id
@@ -1377,7 +1403,7 @@ def fixed_profit_entry(week1b: str) -> None:
                         price=0,
                         tradingsymbol=new_trade.symbol,
                         order_type=OrderType.MARKET,
-                        transaction_type=TransactionType.BUY
+                        transaction_type=TransactionType.BUY.value
                     )
                     order_id = order['data']['order_id']  # Extract the order_id
                     new_trade.order_id = order_id
@@ -1407,7 +1433,7 @@ def fixed_profit_entry(week1b: str) -> None:
                     product=Product.DELIVERY,
                     tradingsymbol=call_symbol,
                     order_type=OrderType.LIMIT,
-                    transaction_type=TransactionType.SELL
+                    transaction_type=TransactionType.SELL.value
                 )
                 order_id = order['data']['order_id']  # Extract the order_id
                 new_trade.order_id = order_id
@@ -1436,7 +1462,7 @@ def fixed_profit_entry(week1b: str) -> None:
                     product=Product.DELIVERY,
                     tradingsymbol=put_symbol,
                     order_type=OrderType.LIMIT,
-                    transaction_type=TransactionType.SELL
+                    transaction_type=TransactionType.SELL.value
                 )
                 order_id = order['data']['order_id']  # Extract the order_id
                 new_trade.order_id = order_id
@@ -1505,7 +1531,7 @@ def next_expiry(client, current_trade) -> None:
                 price=new_trade.entry_price,
                 tradingsymbol=symbol,
                 order_type=OrderType.LIMIT,
-                transaction_type=TransactionType.SELL
+                transaction_type=TransactionType.SELL.value
             )
             order_id = order['data']['order_id']  # Extract the order_id
             new_trade.order_id = order_id
@@ -1531,7 +1557,7 @@ def stop_loss_entry(client: Client, current_trade: Trades):
                 tradingsymbol=tradingsymbol,
                 order_type=OrderType.STOPLOSS_LIMIT,
                 trigger_price=121.0,
-                transaction_type=TransactionType.BUY
+                transaction_type=TransactionType.BUY.value
             )
             current_trade.exit_order_id = order['data']['order_id']
             current_trade.status = TradeStatus.LIVED.value
@@ -1553,7 +1579,7 @@ def stop_loss_exit(client: Client, current_trade: Trades):
         
 
 def update() -> None:
-    global week1b, week2b
+    global week1b, week2b, trend
     """Update the Trades table"""
     if datetime.now().time() < time(9, 16) or datetime.now().time() > time(15, 30):
         print("Time out")
@@ -1625,7 +1651,7 @@ def update() -> None:
                                     price=0,
                                     tradingsymbol=new_trade.symbol,
                                     order_type=OrderType.MARKET,
-                                    transaction_type=TransactionType.BUY
+                                    transaction_type=TransactionType.BUY.value
                                 )
                                 order_id = order['data']['order_id']  # Extract the order_id
                                 new_trade.order_id = order_id
@@ -1679,7 +1705,7 @@ def update() -> None:
                                 price=new_trade.entry_price,
                                 tradingsymbol=symbol,
                                 order_type=OrderType.LIMIT,
-                                transaction_type=TransactionType.SELL
+                                transaction_type=TransactionType.SELL.value
                             )
                             order_id = order['data']['order_id']  # Extract the order_id
                             new_trade.order_id = order_id
@@ -1729,7 +1755,7 @@ def update() -> None:
                             price=0,
                             tradingsymbol=new_trade.symbol,
                             order_type=OrderType.MARKET,
-                            transaction_type=TransactionType.BUY
+                            transaction_type=TransactionType.BUY.value
                         )
                         order_id = order['data']['order_id']  # Extract the order_id
                         new_trade.order_id = order_id
@@ -1772,7 +1798,7 @@ def update() -> None:
                             price=0,
                             tradingsymbol=new_trade.symbol,
                             order_type=OrderType.MARKET,
-                            transaction_type=TransactionType.SELL
+                            transaction_type=TransactionType.SELL.value
                         )
                         order_id = order['data']['order_id']  # Extract the order_id
                         new_trade.order_id = order_id
@@ -1819,7 +1845,7 @@ def update() -> None:
                             price=0,
                             tradingsymbol=new_trade.symbol,
                             order_type=OrderType.MARKET,
-                            transaction_type=TransactionType.BUY
+                            transaction_type=TransactionType.BUY.value
                         )
                         order_id = order['data']['order_id']  # Extract the order_id
                         new_trade.order_id = order_id
@@ -1849,7 +1875,7 @@ def update() -> None:
                             price=0,
                             tradingsymbol=current_trade.symbol,
                             order_type=OrderType.MARKET,
-                            transaction_type=TransactionType.SELL
+                            transaction_type=TransactionType.SELL.value
                         )
                         order_id = order['data']['order_id']
                         print(f'{datetime.now()}: {order_id} order checking1')  # Extract the order_id
@@ -1943,7 +1969,7 @@ def update() -> None:
                                 price=new_trade.entry_price,
                                 tradingsymbol=symbol,
                                 order_type=OrderType.LIMIT,
-                                transaction_type=TransactionType.SELL
+                                transaction_type=TransactionType.SELL.value
                             )
                             order_id = order['data']['order_id']  # Extract the order_id
                             new_trade.order_id = order_id
@@ -2022,7 +2048,7 @@ def update() -> None:
                                     price=new_trade.entry_price,
                                     tradingsymbol=symbol,
                                     order_type=OrderType.LIMIT,
-                                    transaction_type=TransactionType.SELL
+                                    transaction_type=TransactionType.SELL.value
                                 )
                                 order_id = order['data']['order_id']  # Extract the order_id
                                 new_trade.order_id = order_id
@@ -2077,7 +2103,7 @@ def update() -> None:
                             product=Product.DELIVERY,
                             tradingsymbol=new_trade.symbol,
                             order_type=OrderType.LIMIT,
-                            transaction_type=TransactionType.BUY
+                            transaction_type=TransactionType.BUY.value
                         )
                         order_id = order['data']['order_id']  # Extract the order_id
                         new_trade.order_id = order_id
@@ -2129,7 +2155,7 @@ def update() -> None:
                             product=Product.DELIVERY,
                             tradingsymbol=new_trade.symbol,
                             order_type=OrderType.LIMIT,
-                            transaction_type=TransactionType.SELL
+                            transaction_type=TransactionType.SELL.value
                         )
                         order_id = order['data']['order_id']  # Extract the order_id
                         new_trade.order_id = order_id
@@ -2202,7 +2228,7 @@ def update() -> None:
                                 quantity=current_trade.quantity - traded,
                                 price=0,
                                 product=Product.DELIVERY,
-                                tradingsymbol=new_trade.symbol,
+                                tradingsymbol=current_trade.symbol,
                                 order_type=OrderType.MARKET,
                                 transaction_type=current_trade.trade_type
                             )
@@ -2278,6 +2304,35 @@ def update() -> None:
                 current_trade.profit_loss = round(current_trade.entry_price - current_trade.ltp, 2) * current_trade.quantity
             elif current_trade.trade_type == TransactionType.BUY.value and current_trade.status == TradeStatus.LIVE.value:
                 current_trade.profit_loss = round(current_trade.ltp - current_trade.entry_price, 2) * current_trade.quantity
+            if current_trade.status == TradeStatus.LIVE.value and current_trade.rank == 'trending':
+                api_instance = upstox_client.HistoryApi()
+                instrument_key = get_token(current_trade.symbol) # str |
+                interval = '1minute'  # str |
+                api_version = '2.0'  # str | API Version Header
+
+                try:
+                    intraday = api_instance.get_intra_day_candle_data(instrument_key, interval, api_version)
+                    print("Intrday successful")
+                    historical = api_instance.get_historical_candle_data1(instrument_key, interval, todays_date, from_date, api_version)
+                    print("historical + intraday successful")
+                    ohlc_data = df(
+                        data=intraday.data.candles + historical.data.candles,
+                        index=[candle_data[0] for candle_data in intraday.data.candles] + [candle_data[0] for candle_data in historical.data.candles],
+                        columns=['TimeStamp', 'Open', 'High', 'Low', 'Close', 'Volume', 'OI']
+                    )
+                    data = ohlc_data[['Open', 'High', 'Low', 'Close']][::-1]
+
+                except ApiException as e:
+                    print("Exception when calling HistoryApi->get_historical_candle_data: %s\n" % e)
+                sti = ta.supertrend(data['High'], data['Low'], data['Close'], 10, 2)
+                direction = sti['SUPERTd_10_2.0'].iloc[-1]
+                print('Direction is', direction)
+                trend = direction
+                if direction == -1:
+                    client.close_trade(current_trade)
+                    flags = session.query(Flags).filter_by(client_id=client.client_id).one()
+                    flags.optionbuy = 0
+                    session.commit()
         # session.query(Clients).filter_by(client_id=client.client_id).first()
         try:
             api_instance = upstox_client.UserApi(client.api_client)
@@ -2716,7 +2771,7 @@ if question.lower() == 'c':
         # schedule.every().day.at("15:29:13").do(close_future_hedge)
         schedule.every().day.at("15:29:31").do(remove_SL)
 
-        schedule.every().day.at("09:25:02").do(fixed_profit_entry_with_arguments)
+        schedule.every().day.at("10:03:02").do(fixed_profit_entry_with_arguments)
         schedule.every().tuesday.at("15:26:02").do(fixed_profit_entry_with_arguments)
         schedule.every().wednesday.at("15:26:02").do(close_old_insurance)
         schedule.every().thursday.at("15:26:02").do(close_old_insurance)

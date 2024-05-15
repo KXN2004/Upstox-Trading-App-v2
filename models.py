@@ -173,7 +173,7 @@ class Client:
     def place_order(self,
             quantity: int,
             tradingsymbol: str,
-            transaction_type: TransactionType,
+            transaction_type: str,
             product: Product=Product.DELIVERY,
             validity: Validity=Validity.DAY,
             price: float=0,
@@ -209,7 +209,7 @@ class Client:
             price=price,
             instrument_token=self.get_token(tradingsymbol),
             order_type=order_type.value,
-            transaction_type=transaction_type.value,
+            transaction_type=transaction_type,
             disclosed_quantity=disclosed_quantity,
             trigger_price=trigger_price,
             is_amo=is_amo,
@@ -219,9 +219,9 @@ class Client:
     def close_trade(self, trade) -> None:
         """Close the trade which was passed as an argument"""
         if trade.trade_type == TransactionType.SELL.value:
-            trade_type = TransactionType.BUY
+            trade_type = TransactionType.BUY.value
         else:
-            trade_type = TransactionType.SELL
+            trade_type = TransactionType.SELL.value
         trade.status = TradeStatus.CLOSING.value
         self.session.commit()
         try:
