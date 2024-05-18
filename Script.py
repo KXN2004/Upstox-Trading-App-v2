@@ -35,6 +35,14 @@ for _ in session.query(Credentials).filter_by(is_active=YES):
     active_clients.append(Client(_.client_id, _.access_token, session))
     no_of_clients += 1
 
+def get_symbol(tradingsymbol: str):
+    if len(tradingsymbol) == 21:
+        month = datetime.strptime("0" + tradingsymbol[11], "%m").strftime("%b").upper()
+    else:
+        month = datetime.strptime(tradingsymbol[11:13], "%m").strftime("%b").upper()
+    return " ".join([ tradingsymbol[:9],  tradingsymbol[-7: -2],  tradingsymbol[-2:],  tradingsymbol[-9:-7],  month, tradingsymbol[9:11]])
+
+
 
 def get_token(tradingsymbol: str) -> str:
     """Return the token of the given tradingsymbol"""
@@ -50,15 +58,17 @@ def get_ltp(tradingsymbol: str) -> float:
     """Return the last traded price of the given tradingsymbol"""
     global no_of_requests
     try:
-        ltp = active_clients[no_of_requests % no_of_clients].market_quote_api.ltp(
+        # {'NSE_FO:BANKNIFTY 44400 PE 22 MAY 24': {'last_price': 5.05, 'instrument_token': 'NSE_FO|39855'}}
+        ltp = list(active_clients[no_of_requests % no_of_clients].market_quote_api.ltp(
             get_token(tradingsymbol), API_VERSION
-        ).to_dict()['data']['NSE_FO' + ':' + tradingsymbol]['last_price']
+        ).to_dict()['data'].values())[0]['last_price']
         no_of_requests += 1
     except ApiException as e:
         print("Exception when calling MarketDataApi->ltp: %s\n" % e)
         ltp = 0
     return ltp
 
+get_ltp(tradingsymbol="BANKNIFTY2452244400PE")
 
 def get_banknifty_ltp() -> float:
     """Return the last traded price of the Bank Nifty Index"""
@@ -455,7 +465,7 @@ def optionbuy(client, option):
         new_trade.order_id = randint(10, 99)
         parameters = client.market_quote_api.get_full_market_quote(get_token(buyoption),
                                                                     API_VERSION).to_dict()
-        new_trade.entry_price = parameters['data'][f'NSE_FO:{buyoption}']['depth']['sell'][0][
+        new_trade.entry_price = parameters['data'][get_symbol(buyoption)]['depth']['sell'][0][
                                     'price']
         try:
             order = client.place_order(
@@ -559,7 +569,7 @@ def close_future_hedge():
                         new_trade.trade_type = TransactionType.SELL.value
                         new_trade.ltp = get_ltp(new_trade.symbol)
                         parameters = client.market_quote_api.get_full_market_quote(get_token(new_trade.symbol), API_VERSION).to_dict()
-                        new_trade.entry_price = parameters['data'][f'NSE_FO:{new_trade.symbol}']['depth']['sell'][0]['price'] - 0.05
+                        new_trade.entry_price = parameters['data'][get_symbol(new_trade.symbol)]['depth']['sell'][0]['price'] - 0.05
                         try:
                             order = client.place_order(
                                 quantity=qty,
@@ -622,7 +632,7 @@ def close_future_hedge():
                         new_trade.ltp = get_ltp(new_trade.symbol)
                         parameters = client.market_quote_api.get_full_market_quote(get_token(new_trade.symbol),
                                                                                    API_VERSION).to_dict()
-                        new_trade.entry_price = parameters['data'][f'NSE_FO:{new_trade.symbol}']['depth']['sell'][0][
+                        new_trade.entry_price = parameters['data'][get_symbol(new_trade.symbol)]['depth']['sell'][0][
                                                     'price'] - 0.05
                         try:
                             order = client.place_order(
@@ -725,7 +735,7 @@ def close_future_hedge():
                         new_trade.ltp = get_ltp(new_trade.symbol)
                         parameters = client.market_quote_api.get_full_market_quote(get_token(new_trade.symbol),
                                                                                    API_VERSION).to_dict()
-                        new_trade.entry_price = parameters['data'][f'NSE_FO:{new_trade.symbol}']['depth']['sell'][0][
+                        new_trade.entry_price = parameters['data'][get_symbol(new_trade.symbol)]['depth']['sell'][0][
                                                     'price'] - 0.05
                         try:
                             order = client.place_order(
@@ -778,7 +788,7 @@ def close_future_hedge():
                         new_trade.ltp = get_ltp(new_trade.symbol)
                         parameters = client.market_quote_api.get_full_market_quote(get_token(new_trade.symbol),
                                                                                    API_VERSION).to_dict()
-                        new_trade.entry_price = parameters['data'][f'NSE_FO:{new_trade.symbol}']['depth']['sell'][0][
+                        new_trade.entry_price = parameters['data'][get_symbol(new_trade.symbol)]['depth']['sell'][0][
                                                     'price'] - 0.05
                         try:
                             order = client.place_order(
@@ -1293,7 +1303,7 @@ def close_old_insurance():
                         new_trade.order_id = randint(10, 99)
                         parameters = client.market_quote_api.get_full_market_quote(get_token(symbol),
                                                                                    API_VERSION).to_dict()
-                        new_trade.entry_price = parameters['data'][f'NSE_FO:{symbol}']['depth']['sell'][0][
+                        new_trade.entry_price = parameters['data'][f"NSE_FO:{symbol}"]['depth']['sell'][0][
                                                     'price']
                         try:
                             order = client.place_order(
@@ -1372,7 +1382,7 @@ def fixed_profit_entry(week1b: str) -> None:
                 new_trade.trade_type = TransactionType.BUY.value
                 new_trade.ltp = get_ltp(symbol)
                 parameters = client.market_quote_api.get_full_market_quote(get_token(symbol), API_VERSION).to_dict()
-                new_trade.entry_price = parameters['data'][f'NSE_FO:{symbol}']['depth']['sell'][0]['price'] - 0.05
+                new_trade.entry_price = parameters['data'][f"NSE_FO:{symbol}"]['depth']['sell'][0]['price'] - 0.05
                 try:
                     order = client.place_order(
                         quantity=new_trade.quantity,
@@ -1425,7 +1435,7 @@ def fixed_profit_entry(week1b: str) -> None:
             else:
                 new_trade.rank = 'Call 0'
             parameters = client.market_quote_api.get_full_market_quote(get_token(call_symbol), API_VERSION).to_dict()
-            new_trade.entry_price = parameters['data'][f'NSE_FO:{call_symbol}']['depth']['sell'][0]['price'] - 0.05
+            new_trade.entry_price = parameters['data'][get_symbol(call_symbol)]['depth']['sell'][0]['price'] - 0.05
             try:
                 order = client.place_order(
                     quantity=new_trade.quantity,
@@ -1454,7 +1464,7 @@ def fixed_profit_entry(week1b: str) -> None:
             else:
                 new_trade.rank = 'Put 0'
             parameters = client.market_quote_api.get_full_market_quote(get_token(put_symbol), API_VERSION).to_dict()
-            new_trade.entry_price = parameters['data'][f'NSE_FO:{put_symbol}']['depth']['sell'][0]['price'] - 0.05
+            new_trade.entry_price = parameters['data'][get_symbol(put_symbol)]['depth']['sell'][0]['price'] - 0.05
             try:
                 order = client.place_order(
                     quantity=new_trade.quantity,
@@ -1524,7 +1534,7 @@ def next_expiry(client, current_trade) -> None:
         parameters = client.market_quote_api.get_full_market_quote(
             get_token(symbol), API_VERSION
         ).to_dict()
-        new_trade.entry_price = parameters['data'][f'NSE_FO:{symbol}']['depth']['sell'][0]['price'] - 0.05
+        new_trade.entry_price = parameters['data'][f"NSE_FO:{symbol}"]['depth']['sell'][0]['price'] - 0.05
         try:
             order = client.place_order(
                 quantity=new_trade.quantity,
@@ -1644,7 +1654,8 @@ def update() -> None:
                             new_trade.ltp = get_ltp(symbol)
                             new_trade.order_id = randint(10, 99)
                             parameters = client.market_quote_api.get_full_market_quote(get_token(symbol), API_VERSION).to_dict()
-                            new_trade.entry_price = parameters['data'][f'NSE_FO:{symbol}']['depth']['sell'][0]['price'] - 0.05
+                            print(parameters['data'])
+                            new_trade.entry_price = parameters['data'][f"NSE_FO:{symbol}"]['depth']['sell'][0]['price'] - 0.05                            
                             try:
                                 order = client.place_order(
                                     quantity=new_trade.quantity,
@@ -1698,7 +1709,7 @@ def update() -> None:
 
                         new_trade.order_id = randint(10, 99)
                         parameters = client.market_quote_api.get_full_market_quote(get_token(symbol), API_VERSION).to_dict()
-                        new_trade.entry_price = parameters['data'][f'NSE_FO:{symbol}']['depth']['sell'][0]['price'] - 0.05
+                        new_trade.entry_price = parameters['data'][f"NSE_FO:{symbol}"]['depth']['sell'][0]['price'] - 0.05
                         try:
                             order = client.place_order(
                                 quantity=new_trade.quantity,
@@ -1748,7 +1759,7 @@ def update() -> None:
                     new_trade.ltp = get_ltp(symbol)
                     new_trade.order_id = randint(10, 99)
                     parameters = client.market_quote_api.get_full_market_quote(get_token(symbol), API_VERSION).to_dict()
-                    new_trade.entry_price = parameters['data'][f'NSE_FO:{symbol}']['depth']['sell'][0]['price'] - 0.05
+                    new_trade.entry_price = parameters['data'][f"NSE_FO:{symbol}"]['depth']['sell'][0]['price'] - 0.05
                     try:
                         order = client.place_order(
                             quantity=new_trade.quantity,
@@ -1791,7 +1802,7 @@ def update() -> None:
                     new_trade.ltp = get_ltp(symbol)
                     new_trade.order_id = randint(10, 99)
                     parameters = client.market_quote_api.get_full_market_quote(get_token(symbol), API_VERSION).to_dict()
-                    new_trade.entry_price = parameters['data'][f'NSE_FO:{symbol}']['depth']['sell'][0]['price'] - 0.05
+                    new_trade.entry_price = parameters['data'][f"NSE_FO:{symbol}"]['depth']['sell'][0]['price'] - 0.05
                     try:
                         order = client.place_order(
                             quantity=new_trade.quantity,
@@ -1837,7 +1848,7 @@ def update() -> None:
                     new_trade.order_id = randint(10, 99)
                     parameters = client.market_quote_api.get_full_market_quote(get_token(symbol),
                                                                                API_VERSION).to_dict()
-                    new_trade.entry_price = parameters['data'][f'NSE_FO:{symbol}']['depth']['sell'][0][
+                    new_trade.entry_price = parameters['data'][f"NSE_FO:{symbol}"]['depth']['sell'][0][
                                                 'price'] - 0.05
                     try:
                         order = client.place_order(
@@ -1961,7 +1972,7 @@ def update() -> None:
                         new_trade.order_id = randint(10, 99)
                         parameters = client.market_quote_api.get_full_market_quote(get_token(symbol),
                                                                                    API_VERSION).to_dict()
-                        new_trade.entry_price = parameters['data'][f'NSE_FO:{symbol}']['depth']['sell'][0][
+                        new_trade.entry_price = parameters['data'][f"NSE_FO:{symbol}"]['depth']['sell'][0][
                                                     'price'] - 0.05
                         try:
                             order = client.place_order(
@@ -2040,7 +2051,7 @@ def update() -> None:
                             new_trade.order_id = randint(10, 99)
                             parameters = client.market_quote_api.get_full_market_quote(get_token(symbol),
                                                                                     API_VERSION).to_dict()
-                            new_trade.entry_price = parameters['data'][f'NSE_FO:{symbol}']['depth']['sell'][0][
+                            new_trade.entry_price = parameters['data'][f"NSE_FO:{symbol}"]['depth']['sell'][0][
                                                         'price'] - 0.05
                             try:
                                 order = client.place_order(
@@ -2095,7 +2106,7 @@ def update() -> None:
                     parameters = client.market_quote_api.get_full_market_quote(
                         get_token(new_trade.symbol), API_VERSION
                     ).to_dict()
-                    new_trade.entry_price = parameters['data'][f'NSE_FO:{new_trade.symbol}']['depth']['sell'][0]['price'] - 0.05
+                    new_trade.entry_price = parameters['data'][get_symbol(new_trade.symbol)]['depth']['sell'][0]['price'] - 0.05
                     try:
                         order = client.place_order(
                             quantity=qty,
@@ -2147,7 +2158,7 @@ def update() -> None:
                     parameters = client.market_quote_api.get_full_market_quote(
                         get_token(new_trade.symbol), API_VERSION
                     ).to_dict()
-                    new_trade.entry_price = parameters['data'][f'NSE_FO:{new_trade.symbol}']['depth']['sell'][0]['price'] - 0.05
+                    new_trade.entry_price = parameters['data'][get_symbol(new_trade.symbol)]['depth']['sell'][0]['price'] - 0.05
                     try:
                         order = client.place_order(
                             quantity=qty,
@@ -2206,7 +2217,7 @@ def update() -> None:
                     parameters = client.market_quote_api.get_full_market_quote(
                         get_token(current_trade.symbol), API_VERSION
                     ).to_dict()
-                    current_trade.entry_price = parameters['data'][f'NSE_FO:{current_trade.symbol}']['depth']['sell'][0]['price'] - 0.05
+                    current_trade.entry_price = parameters['data'][get_symbol(current_trade.symbol)]['depth']['sell'][0]['price'] - 0.05
                     body = upstox_client.ModifyOrderRequest(
                         validity=Validity.DAY.value,
                         price=current_trade.entry_price,
