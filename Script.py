@@ -37,9 +37,14 @@ for _ in session.query(Credentials).filter_by(is_active=YES):
 
 def get_symbol(tradingsymbol: str):
     if len(tradingsymbol) == 21:
-        month = datetime.strptime("0" + tradingsymbol[11], "%m").strftime("%b").upper()
+        char = tradingsymbol[11]
+        if char.ialpha():
+            month = datetime.strptime(tradingsymbol[11:14], "%m").strftime("%b").upper()
+        else:
+            month = datetime.strptime("0" + char, "%m").strftime("%b").upper()
     else:
-        month = datetime.strptime(tradingsymbol[11:13], "%m").strftime("%b").upper()
+        month = datetime.strptime(tradingsymbol[11:14], "%b").strftime("%b").upper()
+    print("The tradingsymbol is", tradingsymbol)
     return " ".join([ tradingsymbol[:9],  tradingsymbol[-7: -2],  tradingsymbol[-2:],  tradingsymbol[-9:-7],  month, tradingsymbol[9:11]])
 
 
@@ -68,7 +73,6 @@ def get_ltp(tradingsymbol: str) -> float:
         ltp = 0
     return ltp
 
-get_ltp(tradingsymbol="BANKNIFTY2452244400PE")
 
 def get_banknifty_ltp() -> float:
     """Return the last traded price of the Bank Nifty Index"""
@@ -409,6 +413,107 @@ def micro_trend(profit1, profit2, profit3, profit4, profit5):
         print('Trend is not defined for any multiplier')
         return 0
 
+def banknifty_future():
+
+    api_instance = upstox_client.HistoryApi()
+    symbol = month1b + 'FUT'
+    instrument_key = get_token(symbol) #'NSE_FO|46923'  # str |
+    interval = '30minute'  # str |
+    api_version = '2.0'  # str | API Version Header
+    multiplier = 2
+
+    try:
+        intraday = api_instance.get_intra_day_candle_data(instrument_key, interval, api_version)
+        print("Intrday successful")
+        historical = api_instance.get_historical_candle_data1(instrument_key, interval, todays_date, from_date, api_version)
+        print("historical + intraday successful")
+        ohlc_data = df(
+            data=intraday.data.candles + historical.data.candles,
+            index=[candle_data[0] for candle_data in intraday.data.candles] + [candle_data[0] for candle_data in historical.data.candles],
+            columns=['TimeStamp', 'Open', 'High', 'Low', 'Close', 'Volume', 'OI']
+        )
+        data = ohlc_data[['Open', 'High', 'Low', 'Close']][::-1]
+        sti = ta.supertrend(data['High'], data['Low'], data['Close'], 10, multiplier)
+        trend30 = sti[f'SUPERTd_10_{multiplier}.0'].iloc[-1]
+        print("Trend30 is", trend30)
+    except ApiException as e:
+        print("Exception when calling HistoryApi->get_historical_candle_data: %s\n" % e)
+    for client in active_clients:
+        flags = session.query(Flags).filter_by(client_id=client.client_id).one()
+        new_trade = Trades()
+        
+        if client.strategy.stfutures >= 1:
+            if trend30 == 1 and flags.stfutures != 1:
+                new_trade = Trades()
+                if flags.stfutures == 0:
+                    flags.stfutures = 1
+                    qty = client.strategy.stfutures * 15
+                elif flags.stfutures == -1:
+                    flags.stfutures = 1
+                    qty = client.strategy.stfutures * 15 * 2
+                new_trade.trade_type = TransactionType.BUY.value
+            elif trend30 == -1 and flags.stfutures != -1:
+                new_trade = Trades()
+                if flags.stfutures == 0:
+                    flags.stfutures = -1
+                    qty = client.strategy.stfutures * 15
+                elif flags.stfutures == 1:
+                    flags.stfutures = -1
+                    qty = client.strategy.stfutures * 15 * 2
+                new_trade.trade_type = TransactionType.SELL.value
+            new_trade.quantity = client.strategy.stfutures * 15
+            new_trade.strategy = Strategy.FUT_ST.value
+            new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
+            new_trade.days_left = fromtime1
+            new_trade.date_time = datetime.now().time()
+            new_trade.exit_price = -1
+            new_trade.exit_status = NOT_APPLICABLE
+            new_trade.profit_loss = 0
+            new_trade.client_id = client.client_id
+            new_trade.symbol = month1b + 'FUT'
+            new_trade.rank = 'Trend'
+            parameters = client.market_quote_api.get_full_market_quote(
+                get_token(new_trade.symbol), API_VERSION
+            ).to_dict()
+            print(parameters['data'])
+            if new_trade.trade_type == TransactionType.SELL.value:
+                # it was get_symbol(new_trade.symbol)
+                new_trade.entry_price = parameters['data'][f"NSE_FO:{new_trade.symbol}"]['depth']['sell'][0]['price'] - 0.05
+            else:
+                new_trade.entry_price = parameters['data'][f"NSE_FO:{new_trade.symbol}"]['depth']['buy'][0]['price'] + 0.05
+            try:
+                order = client.place_order(
+                    quantity=qty,
+                    price=new_trade.entry_price,
+                    product=Product.DELIVERY,
+                    tradingsymbol=new_trade.symbol,
+                    order_type=OrderType.LIMIT,
+                    transaction_type=new_trade.trade_type.value
+                )
+                order_id = order['data']['order_id']  # Extract the order_id
+                new_trade.order_id = order_id
+            except ApiException as e:
+                print("Exception when calling OrderApi->place_order: %s\n" % e)
+            new_trade.ltp = get_ltp(new_trade.symbol)
+            session.add(deepcopy(new_trade))
+            if qty == client.strategy.futures * 15 * 2:
+                trade_to_exit = client.get_trades().filter(
+                    Trades.status == TradeStatus.LIVE.value,
+                    Trades.strategy == Strategy.FUT_ST.value
+                ).first()
+                try:
+                    order_details = client.order_api.get_order_details(
+                        api_version=API_VERSION, order_id=new_trade.order_id
+                    )
+                    trade_to_exit.exit_status = order_details.data[-1].status
+                    trade_to_exit.exit_order_id = new_trade.order_id
+                except ApiException:
+                    print('Unable to find order details, passing for now')
+                trade_to_exit.status = TradeStatus.CLOSING.value
+            # save the changes to the database
+            session.commit()
+                
+
 def optionbuy(client, option):
     global trend
     if option[-2:] == 'CE':
@@ -465,7 +570,7 @@ def optionbuy(client, option):
         new_trade.order_id = randint(10, 99)
         parameters = client.market_quote_api.get_full_market_quote(get_token(buyoption),
                                                                     API_VERSION).to_dict()
-        new_trade.entry_price = parameters['data'][get_symbol(buyoption)]['depth']['sell'][0][
+        new_trade.entry_price = parameters['data'][f"NSE_FO:{buyoption}"]['depth']['sell'][0][
                                     'price']
         try:
             order = client.place_order(
@@ -1435,7 +1540,7 @@ def fixed_profit_entry(week1b: str) -> None:
             else:
                 new_trade.rank = 'Call 0'
             parameters = client.market_quote_api.get_full_market_quote(get_token(call_symbol), API_VERSION).to_dict()
-            new_trade.entry_price = parameters['data'][get_symbol(call_symbol)]['depth']['sell'][0]['price'] - 0.05
+            new_trade.entry_price = parameters['data'][f"NSE_FO:{call_symbol}"]['depth']['sell'][0]['price'] - 0.05
             try:
                 order = client.place_order(
                     quantity=new_trade.quantity,
@@ -1464,7 +1569,7 @@ def fixed_profit_entry(week1b: str) -> None:
             else:
                 new_trade.rank = 'Put 0'
             parameters = client.market_quote_api.get_full_market_quote(get_token(put_symbol), API_VERSION).to_dict()
-            new_trade.entry_price = parameters['data'][get_symbol(put_symbol)]['depth']['sell'][0]['price'] - 0.05
+            new_trade.entry_price = parameters['data'][f"NSE_FO:{put_symbol}"]['depth']['sell'][0]['price'] - 0.05
             try:
                 order = client.place_order(
                     quantity=new_trade.quantity,
@@ -1935,7 +2040,8 @@ def update() -> None:
                                     price=0,
                                     order_id=current_trade.order_id,
                                     order_type=OrderType.MARKET.value,
-                                    trigger_price=0
+                                    trigger_price=0,
+                                    quantity=current_trade.quantity
                                 )
                                 modified_order = client.order_api.modify_order(body=body, api_key=API_VERSION)
                                 current_trade.exit_order_id = modified_order.data.order_id
@@ -1999,8 +2105,32 @@ def update() -> None:
             elif (current_ltp > 100 and current_trade.status == TradeStatus.LIVE.value or current_trade.status == TradeStatus.LIVED.value) and current_trade.strategy == Strategy.FIXED_PROFIT.value:
                 flags = session.query(Flags).filter_by(client_id=client.client_id).one()
                 if flags.optionbuy == 0 and client.strategy.optionbuy > 0:
-                    print("Executing optionbuy for client", client.client_id)
-                    optionbuy(client, current_trade.symbol)
+                    api_instance = upstox_client.HistoryApi()
+                    instrument_key = get_token(current_trade.symbol) # str |
+                    interval = '1minute'  # str |
+                    api_version = '2.0'  # str | API Version Header
+
+                    try:
+                        intraday = api_instance.get_intra_day_candle_data(instrument_key, interval, api_version)
+                        print("Intrday successful")
+                        historical = api_instance.get_historical_candle_data1(instrument_key, interval, todays_date, from_date, api_version)
+                        print("historical + intraday successful")
+                        ohlc_data = df(
+                            data=intraday.data.candles + historical.data.candles,
+                            index=[candle_data[0] for candle_data in intraday.data.candles] + [candle_data[0] for candle_data in historical.data.candles],
+                            columns=['TimeStamp', 'Open', 'High', 'Low', 'Close', 'Volume', 'OI']
+                        )
+                        data = ohlc_data[['Open', 'High', 'Low', 'Close']][::-1]
+
+                    except ApiException as e:
+                        print("Exception when calling HistoryApi->get_historical_candle_data: %s\n" % e)
+                    sti = ta.supertrend(data['High'], data['Low'], data['Close'], 10, 2)
+                    direction = sti['SUPERTd_10_2.0'].iloc[-1]
+                    print('Direction is', direction)
+                    trend = direction
+                    if direction == 1:
+                        print("Executing optionbuy for client", client.client_id)
+                        optionbuy(client, current_trade.symbol)
                 if current_trade.status == TradeStatus.LIVE.value:
                     stop_loss_entry(client, current_trade)
                 else:
@@ -2217,13 +2347,14 @@ def update() -> None:
                     parameters = client.market_quote_api.get_full_market_quote(
                         get_token(current_trade.symbol), API_VERSION
                     ).to_dict()
-                    current_trade.entry_price = parameters['data'][get_symbol(current_trade.symbol)]['depth']['sell'][0]['price'] - 0.05
+                    current_trade.entry_price = parameters['data'][f"NSE_FO:{current_trade.symbol}"]['depth']['sell'][0]['price'] - 0.05
                     body = upstox_client.ModifyOrderRequest(
                         validity=Validity.DAY.value,
                         price=current_trade.entry_price,
                         order_id=current_trade.order_id,
                         order_type=OrderType.LIMIT.value,
-                        trigger_price=0
+                        trigger_price=0,
+                        quantity=current_trade.quantity
                     )
                     modified_order = client.order_api.modify_order(body=body, api_version=API_VERSION)
                     current_trade.order_id = modified_order.data.order_id  # if not working, use ['order_id']
@@ -2297,7 +2428,8 @@ def update() -> None:
                             price=0,
                             order_id=current_trade.order_id,
                             order_type=OrderType.MARKET.value,
-                            trigger_price=0
+                            trigger_price=0,
+                            quantity=current_trade.quantity
                         )
                         modified_order = client.order_api.modify_order(body=body, api_key=API_VERSION)
                         current_trade.exit_order_id = modified_order.data.order_id  # if not working, use ['order_id']
@@ -2407,7 +2539,7 @@ if question.lower() == 'c':
 
         # schedule.every().day.at("09:15:01").do(close_future_hedge)
         # schedule.every().day.at("09:16:01").do(close_future_hedge)
-        # schedule.every().day.at("09:17:01").do(close_future_hedge)
+        schedule.every().day.at("09:17:01").do(banknifty_future)
         # schedule.every().day.at("09:18:01").do(close_future_hedge)
         # schedule.every().day.at("09:19:01").do(close_future_hedge)
         # schedule.every().day.at("09:20:01").do(close_future_hedge)
@@ -2435,7 +2567,7 @@ if question.lower() == 'c':
         # schedule.every().day.at("09:42:01").do(close_future_hedge)
         # schedule.every().day.at("09:43:01").do(close_future_hedge)
         # schedule.every().day.at("09:44:01").do(close_future_hedge)
-        # schedule.every().day.at("09:45:01").do(close_future_hedge)
+        schedule.every().day.at("09:45:03").do(banknifty_future)
         # schedule.every().day.at("09:46:01").do(close_future_hedge)
         # schedule.every().day.at("09:47:01").do(close_future_hedge)
         # schedule.every().day.at("09:48:01").do(close_future_hedge)
@@ -2465,7 +2597,7 @@ if question.lower() == 'c':
         # schedule.every().day.at("10:12:01").do(close_future_hedge)
         # schedule.every().day.at("10:13:01").do(close_future_hedge)
         # schedule.every().day.at("10:14:01").do(close_future_hedge)
-        # schedule.every().day.at("10:15:01").do(close_future_hedge)
+        schedule.every().day.at("10:15:03").do(banknifty_future)
         # schedule.every().day.at("10:16:01").do(close_future_hedge)
         # schedule.every().day.at("10:17:01").do(close_future_hedge)
         # schedule.every().day.at("10:18:01").do(close_future_hedge)
@@ -2495,7 +2627,7 @@ if question.lower() == 'c':
         # schedule.every().day.at("10:42:01").do(close_future_hedge)
         # schedule.every().day.at("10:43:01").do(close_future_hedge)
         # schedule.every().day.at("10:44:01").do(close_future_hedge)
-        # schedule.every().day.at("10:45:01").do(close_future_hedge)
+        schedule.every().day.at("10:45:03").do(banknifty_future)
         # schedule.every().day.at("10:46:01").do(close_future_hedge)
         # schedule.every().day.at("10:47:01").do(close_future_hedge)
         # schedule.every().day.at("10:48:01").do(close_future_hedge)
@@ -2525,7 +2657,7 @@ if question.lower() == 'c':
         # schedule.every().day.at("11:12:01").do(close_future_hedge)
         # schedule.every().day.at("11:13:01").do(close_future_hedge)
         # schedule.every().day.at("11:14:01").do(close_future_hedge)
-        # schedule.every().day.at("11:15:01").do(close_future_hedge)
+        schedule.every().day.at("11:15:03").do(banknifty_future)
         # schedule.every().day.at("11:16:01").do(close_future_hedge)
         # schedule.every().day.at("11:17:01").do(close_future_hedge)
         # schedule.every().day.at("11:18:01").do(close_future_hedge)
@@ -2555,7 +2687,7 @@ if question.lower() == 'c':
         # schedule.every().day.at("11:42:01").do(close_future_hedge)
         # schedule.every().day.at("11:43:01").do(close_future_hedge)
         # schedule.every().day.at("11:44:01").do(close_future_hedge)
-        # schedule.every().day.at("11:45:01").do(close_future_hedge)
+        schedule.every().day.at("11:45:03").do(banknifty_future)
         # schedule.every().day.at("11:46:01").do(close_future_hedge)
         # schedule.every().day.at("11:47:01").do(close_future_hedge)
         # schedule.every().day.at("11:48:01").do(close_future_hedge)
@@ -2585,7 +2717,7 @@ if question.lower() == 'c':
         # schedule.every().day.at("12:12:01").do(close_future_hedge)
         # schedule.every().day.at("12:13:01").do(close_future_hedge)
         # schedule.every().day.at("12:14:01").do(close_future_hedge)
-        # schedule.every().day.at("12:15:01").do(close_future_hedge)
+        schedule.every().day.at("12:15:03").do(banknifty_future)
         # schedule.every().day.at("12:16:01").do(close_future_hedge)
         # schedule.every().day.at("12:17:01").do(close_future_hedge)
         # schedule.every().day.at("12:18:01").do(close_future_hedge)
@@ -2615,7 +2747,7 @@ if question.lower() == 'c':
         # schedule.every().day.at("12:42:01").do(close_future_hedge)
         # schedule.every().day.at("12:43:01").do(close_future_hedge)
         # schedule.every().day.at("12:44:01").do(close_future_hedge)
-        # schedule.every().day.at("12:45:01").do(close_future_hedge)
+        schedule.every().day.at("12:45:03").do(banknifty_future)
         # schedule.every().day.at("12:46:01").do(close_future_hedge)
         # schedule.every().day.at("12:47:01").do(close_future_hedge)
         # schedule.every().day.at("12:48:01").do(close_future_hedge)
@@ -2645,7 +2777,7 @@ if question.lower() == 'c':
         # schedule.every().day.at("13:12:01").do(close_future_hedge)
         # schedule.every().day.at("13:13:01").do(close_future_hedge)
         # schedule.every().day.at("13:14:01").do(close_future_hedge)
-        # schedule.every().day.at("13:15:01").do(close_future_hedge)
+        schedule.every().day.at("13:15:03").do(banknifty_future)
         # schedule.every().day.at("13:16:01").do(close_future_hedge)
         # schedule.every().day.at("13:17:01").do(close_future_hedge)
         # schedule.every().day.at("13:18:01").do(close_future_hedge)
@@ -2675,7 +2807,7 @@ if question.lower() == 'c':
         # schedule.every().day.at("13:42:01").do(close_future_hedge)
         # schedule.every().day.at("13:43:01").do(close_future_hedge)
         # schedule.every().day.at("13:44:01").do(close_future_hedge)
-        # schedule.every().day.at("13:45:01").do(close_future_hedge)
+        schedule.every().day.at("13:45:03").do(banknifty_future)
         # schedule.every().day.at("13:46:01").do(close_future_hedge)
         # schedule.every().day.at("13:47:01").do(close_future_hedge)
         # schedule.every().day.at("13:48:01").do(close_future_hedge)
@@ -2705,7 +2837,7 @@ if question.lower() == 'c':
         # schedule.every().day.at("14:12:01").do(close_future_hedge)
         # schedule.every().day.at("14:13:01").do(close_future_hedge)
         # schedule.every().day.at("14:14:01").do(close_future_hedge)
-        # schedule.every().day.at("14:15:01").do(close_future_hedge)
+        schedule.every().day.at("14:15:03").do(banknifty_future)
         # schedule.every().day.at("14:16:01").do(close_future_hedge)
         # schedule.every().day.at("14:17:01").do(close_future_hedge)
         # schedule.every().day.at("14:18:01").do(close_future_hedge)
@@ -2735,7 +2867,7 @@ if question.lower() == 'c':
         # schedule.every().day.at("14:42:01").do(close_future_hedge)
         # schedule.every().day.at("14:43:01").do(close_future_hedge)
         # schedule.every().day.at("14:44:01").do(close_future_hedge)
-        # schedule.every().day.at("14:45:01").do(close_future_hedge)
+        schedule.every().day.at("14:45:03").do(banknifty_future)
         # schedule.every().day.at("14:46:01").do(close_future_hedge)
         # schedule.every().day.at("14:47:01").do(close_future_hedge)
         # schedule.every().day.at("14:48:01").do(close_future_hedge)
@@ -2765,7 +2897,7 @@ if question.lower() == 'c':
         # schedule.every().day.at("15:12:01").do(close_future_hedge)
         # schedule.every().day.at("15:13:01").do(close_future_hedge)
         # schedule.every().day.at("15:14:01").do(close_future_hedge)
-        # schedule.every().day.at("15:15:01").do(close_future_hedge)
+        schedule.every().day.at("15:15:03").do(banknifty_future)
         # schedule.every().day.at("15:16:01").do(close_future_hedge)
         # schedule.every().day.at("15:17:01").do(close_future_hedge)
         # schedule.every().day.at("15:18:01").do(close_future_hedge)
@@ -2782,7 +2914,7 @@ if question.lower() == 'c':
         # schedule.every().day.at("15:29:13").do(close_future_hedge)
         schedule.every().day.at("15:29:31").do(remove_SL)
 
-        schedule.every().day.at("10:03:02").do(fixed_profit_entry_with_arguments)
+        schedule.every().day.at("09:25:02").do(fixed_profit_entry_with_arguments)
         schedule.every().tuesday.at("15:26:02").do(fixed_profit_entry_with_arguments)
         schedule.every().wednesday.at("15:26:02").do(close_old_insurance)
         schedule.every().thursday.at("15:26:02").do(close_old_insurance)
