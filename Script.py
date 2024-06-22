@@ -13,6 +13,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from pandas import DataFrame as df
 from sqlalchemy.exc import NoResultFound
+# from py_vollib.black_scholes.implied_volatility import *
+# from py_lets_be_rational.exceptions import BelowIntrinsicException
+# from scipy.stats import norm
+
 engine = create_engine('sqlite:///database.db')
 schema = declarative_base().metadata
 Session = sessionmaker(bind=engine)
@@ -35,6 +39,7 @@ for _ in session.query(Credentials).filter_by(is_active=YES):
     active_clients.append(Client(_.client_id, _.access_token, session))
     no_of_clients += 1
 
+
 def get_symbol(tradingsymbol: str):
     if len(tradingsymbol) == 21:
         char = tradingsymbol[11]
@@ -46,7 +51,6 @@ def get_symbol(tradingsymbol: str):
         month = datetime.strptime(tradingsymbol[11:14], "%b").strftime("%b").upper()
     print("The tradingsymbol is", tradingsymbol)
     return " ".join([ tradingsymbol[:9],  tradingsymbol[-7: -2],  tradingsymbol[-2:],  tradingsymbol[-9:-7],  month, tradingsymbol[9:11]])
-
 
 
 def get_token(tradingsymbol: str) -> str:
@@ -63,7 +67,6 @@ def get_ltp(tradingsymbol: str) -> float:
     """Return the last traded price of the given tradingsymbol"""
     global no_of_requests
     try:
-        # {'NSE_FO:BANKNIFTY 44400 PE 22 MAY 24': {'last_price': 5.05, 'instrument_token': 'NSE_FO|39855'}}
         ltp = list(active_clients[no_of_requests % no_of_clients].market_quote_api.ltp(
             get_token(tradingsymbol), API_VERSION
         ).to_dict()['data'].values())[0]['last_price']
@@ -84,6 +87,19 @@ def get_banknifty_ltp() -> float:
     no_of_requests += 1
     return ltp
 
+def iv(idendtifier, sp, ltp, underlying, t):
+    try:
+        flag = 'c'
+        if "CE" in idendtifier:
+            flag = 'c'
+        if "PE" in idendtifier:
+            flag = 'p'
+        iv = implied_volatility(ltp, underlying, sp, t, 0.1, flag)
+        return round(iv*100, 2)
+    except BelowIntrinsicException:
+        return 0
+    except Exception as error:
+        return -1
 
 def get_trades() -> list:
     """Return all the trades in the database"""
@@ -413,20 +429,17 @@ def micro_trend(profit1, profit2, profit3, profit4, profit5):
         print('Trend is not defined for any multiplier')
         return 0
 
-def banknifty_future():
 
+def banknifty_future():
     api_instance = upstox_client.HistoryApi()
     symbol = month1b + 'FUT'
     instrument_key = get_token(symbol) #'NSE_FO|46923'  # str |
     interval = '30minute'  # str |
     api_version = '2.0'  # str | API Version Header
     multiplier = 2
-
     try:
         intraday = api_instance.get_intra_day_candle_data(instrument_key, interval, api_version)
-        print("Intrday successful")
         historical = api_instance.get_historical_candle_data1(instrument_key, interval, todays_date, from_date, api_version)
-        print("historical + intraday successful")
         ohlc_data = df(
             data=intraday.data.candles + historical.data.candles,
             index=[candle_data[0] for candle_data in intraday.data.candles] + [candle_data[0] for candle_data in historical.data.candles],
@@ -435,13 +448,13 @@ def banknifty_future():
         data = ohlc_data[['Open', 'High', 'Low', 'Close']][::-1]
         sti = ta.supertrend(data['High'], data['Low'], data['Close'], 10, multiplier)
         trend30 = sti[f'SUPERTd_10_{multiplier}.0'].iloc[-1]
-        print("Trend30 is", trend30)
     except ApiException as e:
         print("Exception when calling HistoryApi->get_historical_candle_data: %s\n" % e)
     for client in active_clients:
         flags = session.query(Flags).filter_by(client_id=client.client_id).one()
         new_trade = Trades()
-        
+        qty = -1
+        new_trade.trade_type = ""
         if client.strategy.stfutures >= 1:
             if trend30 == 1 and flags.stfutures != 1:
                 new_trade = Trades()
@@ -461,6 +474,8 @@ def banknifty_future():
                     flags.stfutures = -1
                     qty = client.strategy.stfutures * 15 * 2
                 new_trade.trade_type = TransactionType.SELL.value
+            else:
+                return
             new_trade.quantity = client.strategy.stfutures * 15
             new_trade.strategy = Strategy.FUT_ST.value
             new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
@@ -475,7 +490,6 @@ def banknifty_future():
             parameters = client.market_quote_api.get_full_market_quote(
                 get_token(new_trade.symbol), API_VERSION
             ).to_dict()
-            print(parameters['data'])
             if new_trade.trade_type == TransactionType.SELL.value:
                 # it was get_symbol(new_trade.symbol)
                 new_trade.entry_price = parameters['data'][f"NSE_FO:{new_trade.symbol}"]['depth']['sell'][0]['price'] - 0.05
@@ -488,7 +502,7 @@ def banknifty_future():
                     product=Product.DELIVERY,
                     tradingsymbol=new_trade.symbol,
                     order_type=OrderType.LIMIT,
-                    transaction_type=new_trade.trade_type.value
+                    transaction_type=new_trade.trade_type
                 )
                 order_id = order['data']['order_id']  # Extract the order_id
                 new_trade.order_id = order_id
@@ -496,7 +510,7 @@ def banknifty_future():
                 print("Exception when calling OrderApi->place_order: %s\n" % e)
             new_trade.ltp = get_ltp(new_trade.symbol)
             session.add(deepcopy(new_trade))
-            if qty == client.strategy.futures * 15 * 2:
+            if qty == client.strategy.stfutures * 15 * 2:
                 trade_to_exit = client.get_trades().filter(
                     Trades.status == TradeStatus.LIVE.value,
                     Trades.strategy == Strategy.FUT_ST.value
@@ -1431,8 +1445,6 @@ def close_old_insurance():
 
 def fixed_profit_entry(week1b: str) -> None:
     """Fixed profit entry strategy"""
-    print('Inside fixed Profit entry')
-
     # Properties common to all trades in fixed profit entry strategy
     new_trade = Trades()  # Create a new trade object
     new_trade.strategy = Strategy.FIXED_PROFIT.value
@@ -2508,6 +2520,12 @@ def remove_SL():
         for current_trade in client.get_trades():
             if current_trade.status == TradeStatus.LIVED:
                 stop_loss_exit(client, current_trade)
+
+# totime = datetime.now()
+# t1 = trade_table[c]['days_left'][i] - totime
+# a = t1 / timedelta(days=1)
+# tg = float(a / 365)
+# trade_table[c]['iv'][i] = iv(trade_table[c]['symbol'][i], trade_table[c]['strike'][i], trade_table[c]['LTP'][i],underlying, tg)
 
 question = input('Do you want to start fresh or continue from where stopped?(F/C): ')
 
