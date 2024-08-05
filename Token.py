@@ -43,7 +43,7 @@ for client in active_clients:
         # Authorize that client
         api_response = api_instance.token(
             api_version='2.0',
-            code=input(f"Enter the code for {client.client_id}: "),  # g0S02u
+            code=input(f"Enter the code for {client.client_id}: "),
             client_id=client.api_key,
             client_secret=client.api_secret,
             redirect_uri='https://account.upstox.com/contact-info/',

@@ -1,4 +1,5 @@
 from time import sleep
+from sys import exit
 import dateutil
 import pandas as pd
 import pandas_ta as ta
@@ -72,6 +73,9 @@ def get_ltp(tradingsymbol: str) -> float:
         ).to_dict()['data'].values())[0]['last_price']
         no_of_requests += 1
     except ApiException as e:
+        print("Exception when calling MarketDataApi->ltp: %s\n" % e)
+        ltp = 0
+    except IndexError as e:
         print("Exception when calling MarketDataApi->ltp: %s\n" % e)
         ltp = 0
     return ltp
@@ -475,7 +479,8 @@ def banknifty_future():
                     qty = client.strategy.stfutures * 15 * 2
                 new_trade.trade_type = TransactionType.SELL.value
             else:
-                return
+                print(f"No conditions matched for client {client.client_id}, doing nothing")
+                continue
             new_trade.quantity = client.strategy.stfutures * 15
             new_trade.strategy = Strategy.FUT_ST.value
             new_trade.entry_status = new_trade.status = TradeStatus.ORDERED.value
@@ -526,7 +531,7 @@ def banknifty_future():
                 trade_to_exit.status = TradeStatus.CLOSING.value
             # save the changes to the database
             session.commit()
-                
+
 
 def optionbuy(client, option):
     global trend
@@ -1223,7 +1228,6 @@ def weeks():
         DD0 = int(DD0)
         fromtime0 = datetime(YY0, MM0, DD0, 15, 30)
         days_left = fromtime0
-    # week1b = 'BANKNIFTY24430'
     print('Week2 Bank is', week2b)
     print('Week1 bank is', week1b)
     print('Month1 bank is', month1b)
@@ -1333,13 +1337,9 @@ def weeks():
 
 
 def price_strike(expiry: str, price, option):
-
-    print('Inside price_strike')
-
     buff2 = 0
     strikebuff = 0
     if option.lower() == 'call':
-        print('for new call')
         count = 0
         for strike in strike_ce:
             count += 1
@@ -1365,10 +1365,8 @@ def price_strike(expiry: str, price, option):
                 buff2 = ltp
                 strikebuff = strike
     elif option.lower() == 'put':
-        print('for new put')
         for strike in strike_pe:
             symbol = expiry + str(strike) + 'PE'
-            print(symbol)
             try:
                 ltp = get_ltp(symbol)
                 print(ltp, 'is price for', symbol)
@@ -1378,12 +1376,10 @@ def price_strike(expiry: str, price, option):
             if price > ltp:
                 buff1 = ltp
                 if buff2 - price > price - buff1:
-                    print(symbol)
                     return strike, symbol
                 else:
                     symbol = expiry + str(strikebuff) + 'PE'
                     strike = strikebuff
-                    print(symbol)
                     return strike, symbol
             else:
                 buff2 = ltp
@@ -1396,7 +1392,6 @@ def close_old_insurance():
                 continue
             else:
                 current_ltp = get_ltp(current_trade.symbol)
-                print('LTP now is ', current_trade.ltp)
                 if current_ltp <= 2 and current_trade.status == TradeStatus.LIVE.value:
                     if current_trade.rank in ('Call 1i', 'Put 1i'):
                         print('closing trade', current_trade.symbol, client)
@@ -1721,7 +1716,6 @@ def update() -> None:
                 current_ltp = get_ltp(current_trade.symbol)
                 current_trade.ltp = current_ltp
             session.commit()
-            print('LTP now is ', current_trade.ltp)
             if current_ltp == 0:
                 print('LTP not found')
                 continue
@@ -2344,11 +2338,13 @@ def update() -> None:
             elif current_trade.status == TradeStatus.ORDERED.value:
                 print('Updating new orders')
                 print("Order details for", current_trade.order_id)
-                order_details = client.order_api.get_order_details(
-                    api_version=API_VERSION, order_id=current_trade.order_id
-                )
-                current_trade.entry_status = order_details.data[-1].status
-
+                try:
+                    order_details = client.order_api.get_order_details(
+                        api_version=API_VERSION, order_id=current_trade.order_id
+                    )
+                    current_trade.entry_status = order_details.data[-1].status
+                except ApiException:
+                    print("Order not found")
                 if current_trade.entry_status == TradeStatus.COMPLETE.value:
                     current_trade.status = TradeStatus.LIVE.value
                     current_trade.entry_status = TradeStatus.COMPLETE.value
@@ -2543,7 +2539,6 @@ if question.lower() == 'c':
             try:
                 flags = session.query(Flags).filter_by(client_id=client.client_id).one()
                 flags.max_profit = flags.max_loss = 0
-                print('Updated flags')
                 session.commit()
             except NoResultFound:
                 print(f"No flags found for Client: {client.client_id}")
@@ -2930,13 +2925,14 @@ if question.lower() == 'c':
         # schedule.every().day.at("15:27:01").do(close_future_hedge)
         # schedule.every().day.at("15:28:01").do(close_future_hedge)
         # schedule.every().day.at("15:29:13").do(close_future_hedge)
-        schedule.every().day.at("15:29:31").do(remove_SL)
+        schedule.every().day.at("15:35:31").do(remove_SL)
 
         schedule.every().day.at("09:25:02").do(fixed_profit_entry_with_arguments)
         schedule.every().tuesday.at("15:26:02").do(fixed_profit_entry_with_arguments)
         schedule.every().wednesday.at("15:26:02").do(close_old_insurance)
         schedule.every().thursday.at("15:26:02").do(close_old_insurance)
         schedule.every().tuesday.at("15:26:02").do(close_old_insurance)
+        schedule.every().day.at("15:35:02").do(exit)
     while True:
         schedule.run_pending()
         sleep(1)
