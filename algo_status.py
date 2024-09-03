@@ -65,4 +65,3 @@ every().day.at("15:30").do(quit_check)
 
 while True:
     run_scheduler()
-
