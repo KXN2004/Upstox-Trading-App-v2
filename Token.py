@@ -8,7 +8,7 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 TRUE = 1
 FALSE = 0
 
-# Define the schema of the database\
+# Define the schema of the database
 schema = declarative_base().metadata
 
 # Establish connection with the database

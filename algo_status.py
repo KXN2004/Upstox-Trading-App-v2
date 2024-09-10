@@ -30,8 +30,8 @@ def check_algo():
                 headers={"Content-Type": "application/json"},
                 params={
                     "chat_id": chat,
-                    "text": f"The database was last updated {time_delta} seconds ago!"
-                }
+                    "text": f"The database was last updated {time_delta} seconds ago!",
+                },
             )
 
     system("cls")
@@ -39,7 +39,9 @@ def check_algo():
 
 
 def check_rejected():
-    trades_rejected = session.query(Trades).filter_by(status=TradeStatus.REJECTED.value).count()
+    trades_rejected = (
+        session.query(Trades).filter_by(status=TradeStatus.REJECTED.value).count()
+    )
 
     if trades_rejected:
         for chat in chats:
@@ -48,8 +50,8 @@ def check_rejected():
                 headers={"Content-Type": "application/json"},
                 params={
                     "chat_id": chat,
-                    "text": f"{trades_rejected} trade(s) have been rejected!"
-                }
+                    "text": f"{trades_rejected} trade(s) have been rejected!",
+                },
             )
 
 
