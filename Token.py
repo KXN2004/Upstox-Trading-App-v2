@@ -30,6 +30,7 @@ api_instance = LoginApi()
 # 42AFJE: 240220 https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id=4386a770-aed7-4e7f-8cb2-663b778e4457&redirect_uri=https://account.upstox.com/contact-info/
 # 6CAB9R: 006474 https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id=2988abaa-c17e-4428-a43f-0fc7f22205b0&redirect_uri=https://account.upstox.com/contact-info/
 # 6GALGR: 653278 https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id=465ab58e-8e35-4b09-a289-e813d59d73f0&redirect_uri=https://account.upstox.com/contact-info/
+# 2LCHHP: 653278 https://api.upstox.com/v2/login/authorization/dialog?response_type=code&client_id=8c9a6826-1b46-41a3-9492-7f3fe2d2ee71&redirect_uri=https://account.upstox.com/contact-info/
 
 # Select all the active client
 active_clients = session.query(Credentials).filter_by(is_active=TRUE)

@@ -526,8 +526,10 @@ def banknifty_future():
                     )
                     trade_to_exit.exit_status = order_details.data[-1].status
                     trade_to_exit.exit_order_id = new_trade.order_id
-                except ApiException:
-                    print('Unable to find order details, passing for now')
+                except Exception as e:
+                    print('Unable to find order details, or no trade to exit found:', e)
+                    session.commit()
+                    return
                 trade_to_exit.status = TradeStatus.CLOSING.value
             # save the changes to the database
             session.commit()
@@ -1228,6 +1230,7 @@ def weeks():
         DD0 = int(DD0)
         fromtime0 = datetime(YY0, MM0, DD0, 15, 30)
         days_left = fromtime0
+    week1b = week2b = "BANKNIFTY24OCT"
     print('Week2 Bank is', week2b)
     print('Week1 bank is', week1b)
     print('Month1 bank is', month1b)
@@ -2927,11 +2930,11 @@ if question.lower() == 'c':
         # schedule.every().day.at("15:29:13").do(close_future_hedge)
         schedule.every().day.at("15:35:31").do(remove_SL)
 
-        schedule.every().day.at("09:25:02").do(fixed_profit_entry_with_arguments)
-        schedule.every().tuesday.at("15:26:02").do(fixed_profit_entry_with_arguments)
-        schedule.every().wednesday.at("15:26:02").do(close_old_insurance)
-        schedule.every().thursday.at("15:26:02").do(close_old_insurance)
-        schedule.every().tuesday.at("15:26:02").do(close_old_insurance)
+        # schedule.every().day.at("09:25:02").do(fixed_profit_entry_with_arguments)
+        # schedule.every().tuesday.at("15:26:02").do(fixed_profit_entry_with_arguments)
+        # schedule.every().wednesday.at("15:26:02").do(close_old_insurance)
+        # schedule.every().thursday.at("15:26:02").do(close_old_insurance)
+        # schedule.every().tuesday.at("15:26:02").do(close_old_insurance)
         schedule.every().day.at("15:35:02").do(exit)
     while True:
         schedule.run_pending()
