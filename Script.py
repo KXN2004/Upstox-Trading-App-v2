@@ -13,7 +13,8 @@ from models import Clients
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 from pandas import DataFrame as df
-from sqlalchemy.exc import NoResultFound
+from sqlalchemy.exc import NoResultFound, IntegrityError
+from secrets import token_hex
 # from py_vollib.black_scholes.implied_volatility import *
 # from py_lets_be_rational.exceptions import BelowIntrinsicException
 # from scipy.stats import norm
@@ -532,7 +533,13 @@ def banknifty_future():
                     return
                 trade_to_exit.status = TradeStatus.CLOSING.value
             # save the changes to the database
-            session.commit()
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                new_trade.order_id = token_hex(3)
+                session.add(deepcopy(new_trade))
+                session.commit()
 
 
 def optionbuy(client, option):
@@ -2552,7 +2559,6 @@ if question.lower() == 'c':
             fixed_profit_entry(week1b)
 
         schedule.every(20).seconds.do(update)
-
         # schedule.every().day.at("09:15:01").do(close_future_hedge)
         # schedule.every().day.at("09:16:01").do(close_future_hedge)
         schedule.every().day.at("09:17:01").do(banknifty_future)
