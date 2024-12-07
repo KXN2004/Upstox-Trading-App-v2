@@ -461,17 +461,16 @@ def banknifty_future():
         qty = -1
         new_trade.trade_type = ""
         if client.strategy.stfutures >= 1:
-            if trend30 == 1 and flags.stfutures != 1:
-                new_trade = Trades()
-                if flags.stfutures == 0:
-                    flags.stfutures = 1
-                    qty = client.strategy.stfutures * 15
-                elif flags.stfutures == -1:
-                    flags.stfutures = 1
-                    qty = client.strategy.stfutures * 15 * 2
+            new_trade = Trades()
+            if trend30 == 1 and flags.stfutures == 0:
+                flags.stfutures = 1
+                qty = client.strategy.stfutures * 15
+            elif trend30 == 1 and flags.stfutures == -1:
+                flags.stfutures = 1
+                qty = client.strategy.stfutures * 15 * 2
+                print("Future is done", qty, client.client_id)
                 new_trade.trade_type = TransactionType.BUY.value
             elif trend30 == -1 and flags.stfutures != -1:
-                new_trade = Trades()
                 if flags.stfutures == 0:
                     flags.stfutures = -1
                     qty = client.strategy.stfutures * 15
